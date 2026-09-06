@@ -1,0 +1,19 @@
+name = "entitlement"
+main = "index.ts"
+compatibility_date = "2026-08-19"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "ENTITLEMENT_DB"
+database_name = "entitlement-db"
+database_id = "9b00fb88-8266-4f07-ab31-0d9f9f2ce611"
+
+[triggers]
+crons = ["0 0 1 * *"]
+
+[observability]
+enabled = true
+
+[vars]
+HONEYCOMB_API_KEY = ""  # set via wrangler secret put HONEYCOMB_API_KEY
+HONEYCOMB_DATASET = "p31-entitlement"

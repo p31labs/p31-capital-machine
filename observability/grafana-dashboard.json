@@ -1,0 +1,129 @@
+{
+  "dashboard": {
+    "title": "P31 Monetization Engine",
+    "tags": ["p31", "monetization"],
+    "timezone": "UTC",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Revenue Summary",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(revenue_total_usdc)",
+            "legendFormat": "Total USDC"
+          },
+          {
+            "expr": "sum(revenue_total_eur)",
+            "legendFormat": "Total EUR"
+          },
+          {
+            "expr": "sum(revenue_total_love)",
+            "legendFormat": "Total LOVE"
+          }
+        ],
+        "gridPos": { "x": 0, "y": 0, "w": 12, "h": 4 }
+      },
+      {
+        "id": 2,
+        "title": "Transaction Count",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(transaction_count)",
+            "legendFormat": "Transactions"
+          }
+        ],
+        "gridPos": { "x": 12, "y": 0, "w": 12, "h": 4 }
+      },
+      {
+        "id": 3,
+        "title": "Hash Chain Validity",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "hash_chain_valid",
+            "legendFormat": "Chain Valid"
+          }
+        ],
+        "gridPos": { "x": 0, "y": 4, "w": 12, "h": 4 }
+      },
+      {
+        "id": 4,
+        "title": "Entitlement Distribution",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "tier_distribution.free",
+            "legendFormat": "Free"
+          },
+          {
+            "expr": "tier_distribution.pro",
+            "legendFormat": "Pro"
+          },
+          {
+            "expr": "tier_distribution.enterprise",
+            "legendFormat": "Enterprise"
+          }
+        ],
+        "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 }
+      },
+      {
+        "id": 5,
+        "title": "Revenue by Source",
+        "type": "bargauge",
+        "targets": [
+          {
+            "expr": "source_breakdown.x402.count",
+            "legendFormat": "x402"
+          },
+          {
+            "expr": "source_breakdown.taler.count",
+            "legendFormat": "Taler"
+          },
+          {
+            "expr": "source_breakdown.gumroad.count",
+            "legendFormat": "Gumroad"
+          },
+          {
+            "expr": "source_breakdown.btcpay.count",
+            "legendFormat": "BTCPay"
+          },
+          {
+            "expr": "source_breakdown.love.count",
+            "legendFormat": "LOVE"
+          }
+        ],
+        "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 }
+      },
+      {
+        "id": 6,
+        "title": "Capital Allocation ROI",
+        "type": "bargauge",
+        "targets": [
+          {
+            "expr": "roi_by_target.yield",
+            "legendFormat": "Yield"
+          },
+          {
+            "expr": "roi_by_target.mev",
+            "legendFormat": "MEV"
+          },
+          {
+            "expr": "roi_by_target.fundraising",
+            "legendFormat": "Fundraising"
+          },
+          {
+            "expr": "roi_by_target.compounder",
+            "legendFormat": "Compounder"
+          },
+          {
+            "expr": "roi_by_target.cashback",
+            "legendFormat": "Cashback"
+          }
+        ],
+        "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 }
+      }
+    ]
+  }
+}

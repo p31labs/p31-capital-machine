@@ -1,0 +1,100 @@
+---
+import Layout from '../layouts/Layout.astro';
+import RevenueChart from '../components/RevenueChart.tsx';
+import EntitlementTable from '../components/EntitlementTable.tsx';
+import AllocationTable from '../components/AllocationTable.tsx';
+import ReconciliationPanel from '../components/ReconciliationPanel.tsx';
+
+type Tab = 'revenue' | 'entitlements' | 'allocations' | 'reconciliation';
+---
+
+<Layout>
+  <main class="min-h-screen p-6 md:p-10 max-w-7xl mx-auto">
+    <header class="mb-10">
+      <div class="flex items-center gap-3 mb-2">
+        <div class="w-2 h-8 bg-quantum-cyan rounded-full shadow-glow-cyan" />
+        <h1 class="text-3xl md:text-4xl font-bold tracking-tight text-text-primary">
+          Monetization Dashboard
+        </h1>
+      </div>
+      <p class="text-text-secondary text-sm ml-5">
+        P31 Unified Monetization Engine — Revenue, Entitlements, Allocations, Reconciliation
+      </p>
+    </header>
+
+    <nav class="flex gap-2 mb-8 overflow-x-auto pb-2" id="tab-nav">
+      {[
+        { id: 'revenue' as Tab, label: 'Revenue', icon: 'R' },
+        { id: 'entitlements' as Tab, label: 'Entitlements', icon: 'E' },
+        { id: 'allocations' as Tab, label: 'Allocations', icon: 'A' },
+        { id: 'reconciliation' as Tab, label: 'Reconciliation', icon: 'Q' },
+      ].map((tab) => (
+        <button
+          data-tab={tab.id}
+          class="tab-btn flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 whitespace-nowrap text-text-secondary border border-transparent hover:text-text-primary hover:bg-white/[0.03]"
+        >
+          <span class="w-5 h-5 rounded-md bg-white/5 flex items-center justify-center text-xs font-bold">{tab.icon}</span>
+          {tab.label}
+        </button>
+      ))}
+    </nav>
+
+    <section class="relative">
+      <div id="tab-revenue" class="tab-panel hidden">
+        <RevenueChart client:load />
+      </div>
+      <div id="tab-entitlements" class="tab-panel hidden">
+        <EntitlementTable client:load />
+      </div>
+      <div id="tab-allocations" class="tab-panel hidden">
+        <AllocationTable client:load />
+      </div>
+      <div id="tab-reconciliation" class="tab-panel hidden">
+        <ReconciliationPanel client:load />
+      </div>
+    </section>
+  </main>
+</Layout>
+
+<script>
+  const tabs = ['revenue', 'entitlements', 'allocations', 'reconciliation'] as const;
+
+  function setTab(tab: string) {
+    document.querySelectorAll('.tab-panel').forEach((el) => {
+      el.classList.toggle('hidden', el.id !== `tab-${tab}`);
+      if (el.id === `tab-${tab}`) {
+        el.classList.add('animate-in');
+      }
+    });
+    document.querySelectorAll('.tab-btn').forEach((btn) => {
+      const isActive = btn.getAttribute('data-tab') === tab;
+      btn.classList.toggle('bg-quantum-cyan/10', isActive);
+      btn.classList.toggle('text-quantum-cyan', isActive);
+      btn.classList.toggle('border-quantum-cyan/30', isActive);
+      btn.classList.toggle('shadow-glow-cyan', isActive);
+      btn.classList.toggle('text-text-secondary', !isActive);
+      btn.classList.toggle('border-transparent', !isActive);
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const tab = btn.getAttribute('data-tab');
+        if (tab) setTab(tab);
+      });
+    });
+    const first = document.querySelector('.tab-btn');
+    if (first) first.click();
+  });
+</script>
+
+<style>
+  .animate-in {
+    animation: fadeIn 0.3s ease-out;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+</style>

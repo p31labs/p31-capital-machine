@@ -1,0 +1,19 @@
+{
+  "name": "@p31/monetization-sdk",
+  "version": "0.1.0",
+  "description": "P31 Unified Monetization Engine SDK — revenue ledger, entitlement, and capital allocation",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "keywords": ["p31", "monetization", "x402", "revenue", "entitlement", "capital-allocation"],
+  "license": "MIT"
+}

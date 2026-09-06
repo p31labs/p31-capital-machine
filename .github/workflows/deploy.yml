@@ -1,0 +1,128 @@
+name: P31 Capital Machine - Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'workers/**'
+      - 'chains/**'
+      - 'shared/**'
+      - 'infra/**'
+      - 'package.json'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      module:
+        description: 'Module to deploy (all or specific)'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - orchestrator
+          - yield-vault
+          - mev-arbitrage
+          - fundraising-agent
+          - auto-compounder
+          - cashback-collector
+          - ip-licensing
+          - micro-savings
+          - affiliate-fleet
+          - airdrop-harvester
+          - data-monetization
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - run: npx tsc --noEmit
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - run: npm ci
+      - run: npx vitest run --reporter=verbose
+      - run: npx wrangler --version
+
+  deploy:
+    name: Deploy Capital Machine
+    needs: [lint, test]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'production' }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Authenticate with Cloudflare
+        run: npx wrangler login
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Deploy
+        run: |
+          MODULE="${{ github.event.inputs.module || 'all' }}"
+          ENV="${{ github.event.inputs.environment || 'production' }}"
+          bash infra/deploy.sh "$MODULE" "$ENV"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Verify deployment
+        run: |
+          sleep 10
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://capital-machine.trimtab-signal.workers.dev/health)
+          if [ "$STATUS" != "200" ]; then
+            echo "Health check returned $STATUS — deployment may have issues"
+            curl -s https://capital-machine.trimtab-signal.workers.dev/health
+            exit 1
+          fi
+          echo "✅ Orchestrator health check passed (HTTP $STATUS)"
+
+  health-check:
+    name: Post-Deploy Health Check
+    needs: [deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run health checks
+        run: |
+          MODULES="capital-machine yield-vault mev-arbitrage fundraising-agent auto-compounder cashback-collector ip-licensing micro-savings affiliate-fleet airdrop-harvester data-monetization"
+          for mod in $MODULES; do
+            URL="https://${mod}.trimtab-signal.workers.dev/health"
+            echo "Checking $URL..."
+            curl -f -s -o /dev/null -w "%{http_code}" "$URL" || echo "WARNING: $mod health check failed"
+            echo ""
+          done

@@ -1,0 +1,60 @@
+{
+  "name": "p31-crypto-mcp",
+  "description": "P31 Post-Quantum Crypto MCP Server — ML-DSA-65 signing (FIPS 204), ML-KEM-768 key encapsulation (FIPS 203), SD-JWT selective-disclosure credentials (RFC 9901), GNU Taler blind-signed payments, x402 micropayments (Coinbase), PQC audit. 12 tools.",
+  "url": "https://p31-crypto-mcp.trimtab-signal.workers.dev/mcp",
+  "transport": "streamable-http",
+  "protocolVersion": "2026-07-28",
+  "capabilities": {
+    "tools": {}
+  },
+  "tools": [
+    {
+      "name": "pqc_keygen",
+      "description": "Generate ML-DSA-65 + Ed25519 hybrid keypair for post-quantum signing."
+    },
+    {
+      "name": "pqc_sign",
+      "description": "Sign data with ML-DSA-65 + Ed25519 composite signature. Returns hex-encoded signature."
+    },
+    {
+      "name": "pqc_verify",
+      "description": "Verify ML-DSA-65 + Ed25519 composite signature against data."
+    },
+    {
+      "name": "kem_encapsulate",
+      "description": "X-Wing KEM: ML-KEM-768 (FIPS 203) + X25519 hybrid encapsulate. Returns shared secret and ciphertext."
+    },
+    {
+      "name": "kem_decapsulate",
+      "description": "X-Wing KEM: ML-KEM-768 + X25519 hybrid decapsulate. Returns shared secret."
+    },
+    {
+      "name": "sd_jwt_issue",
+      "description": "Issue SD-JWT (RFC 9901) credential with selectively disclosable claims."
+    },
+    {
+      "name": "sd_jwt_present",
+      "description": "Present SD-JWT credential with selective disclosure."
+    },
+    {
+      "name": "taler_withdraw",
+      "description": "Withdraw LOVE credits as GNU Taler blind-signed coins."
+    },
+    {
+      "name": "taler_pay",
+      "description": "Pay with Taler blind-signed coins via exchange."
+    },
+    {
+      "name": "x402_request",
+      "description": "Create x402 payment request (Coinbase) for MCP tool access."
+    },
+    {
+      "name": "x402_accept",
+      "description": "Accept x402 payment and confirm tool access."
+    },
+    {
+      "name": "pqc_audit",
+      "description": "Audit PQC readiness across ML-DSA-65, ML-KEM-768, SD-JWT, Taler, x402."
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --p31-glass-bg: rgba(18, 18, 26, 0.6);
+  --p31-glass-border: rgba(255, 255, 255, 0.08);
+  --p31-glass-border-hover: rgba(255, 255, 255, 0.15);
+  --p31-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  --p31-glass-blur: blur(12px);
+  --p31-glow-cyan: 0 0 20px rgba(0, 240, 255, 0.25);
+}
+
+.glass-panel {
+  background: var(--p31-glass-bg);
+  backdrop-filter: var(--p31-glass-blur);
+  -webkit-backdrop-filter: var(--p31-glass-blur);
+  border: 1px solid var(--p31-glass-border);
+  box-shadow: var(--p31-glass-shadow);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.glass-panel:hover {
+  border-color: var(--p31-glass-border-hover);
+}
+
+body {
+  background: #0A0A0F;
+  color: #F5F5F7;
+}
+
+::selection {
+  background: rgba(0, 240, 255, 0.3);
+  color: #F5F5F7;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0A0A0F;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1C1C2A;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2a2a3a;
+}

@@ -1,0 +1,18 @@
+name = "p31-auto-compounder"
+main = "index.ts"
+compatibility_date = "2026-09-02"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "CAPITAL_DB"
+database_name = "capital-db"
+database_id = "93485b8c-9ee8-4fc5-879f-5d3a462eaef2"
+
+[[triggers]]
+crons = ["0 */6 * * *"]
+
+[observability]
+enabled = true
+
+[vars]
+CAPITAL_DB_NAME = "capital-db"

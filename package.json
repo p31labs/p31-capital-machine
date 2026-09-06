@@ -1,0 +1,44 @@
+{
+  "name": "p31-capital-machine",
+  "version": "1.0.0",
+  "private": true,
+  "description": "10 sovereign Workers that crawl, farm, extract, and compound capital 24/7",
+  "type": "module",
+  "scripts": {
+    "deploy": "bash infra/deploy.sh all production",
+    "deploy:staging": "bash infra/deploy.sh all staging",
+    "deploy:module": "bash infra/deploy.sh",
+    "secrets": "bash infra/setup-secrets.sh",
+    "migrate": "npx wrangler d1 execute capital-db --remote --file=infra/migrations/001_schema.sql",
+    "seed": "npx wrangler d1 execute capital-db --remote --file=infra/seed.sql",
+    "dev:orchestrator": "npx wrangler dev workers/capital-machine/index.ts --local",
+    "dev:yield": "npx wrangler dev workers/yield-vault/index.ts --local",
+    "dev:mev": "npx wrangler dev workers/mev-arbitrage/index.ts --local",
+    "dev:fundraising": "npx wrangler dev workers/fundraising-agent/index.ts --local",
+    "dev:compounder": "npx wrangler dev workers/auto-compounder/index.ts --local",
+    "dev:cashback": "npx wrangler dev workers/cashback-collector/index.ts --local",
+    "dev:ip": "npx wrangler dev workers/ip-licensing/index.ts --local",
+    "dev:savings": "npx wrangler dev workers/micro-savings/index.ts --local",
+    "dev:affiliate": "npx wrangler dev workers/affiliate-fleet/index.ts --local",
+    "dev:airdrop": "npx wrangler dev workers/airdrop-harvester/index.ts --local",
+    "dev:data": "npx wrangler dev workers/data-monetization/index.ts --local",
+    "lint": "npx tsc --noEmit",
+    "test": "npx vitest run",
+    "test:unit": "npx vitest run workers/ shared/",
+    "test:integration": "npx vitest run tests/integration/",
+    "test:watch": "npx vitest"
+  },
+  "dependencies": {
+    "@cosmjs/proto-signing": "^0.32.0",
+    "@cosmjs/stargate": "^0.32.0",
+    "@solana/spl-token": "^0.4.0",
+    "@solana/web3.js": "^1.95.0",
+    "ethers": "^6.13.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240601.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0",
+    "wrangler": "^3.60.0"
+  }
+}

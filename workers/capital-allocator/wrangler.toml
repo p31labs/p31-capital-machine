@@ -1,0 +1,28 @@
+name = "capital-allocator"
+main = "src/index.ts"
+compatibility_date = "2026-08-19"
+compatibility_flags = ["nodejs_compat"]
+
+[placement]
+mode = "smart"
+
+[[d1_databases]]
+binding = "ALLOCATOR_DB"
+database_name = "allocator-db"
+database_id = "c2e667c0-8f66-417e-8ef1-bda66f3959f8"
+
+[observability]
+enabled = true
+head_sampling_rate = 0.1
+
+[vars]
+REVENUE_LEDGER_URL = "https://revenue-ledger.trimtab-signal.workers.dev"
+ENVIRONMENT = "production"
+HONEYCOMB_API_KEY = ""  # set via wrangler secret put HONEYCOMB_API_KEY
+HONEYCOMB_DATASET = "p31-capital-allocator"
+
+[env.production]
+vars = { ENVIRONMENT = "production" }
+
+[env.staging]
+vars = { ENVIRONMENT = "staging" }

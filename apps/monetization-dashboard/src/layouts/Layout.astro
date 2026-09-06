@@ -1,0 +1,19 @@
+---
+import '../styles/global.css';
+---
+
+<html lang="en" data-theme="dark" data-brand="p31ca">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="P31 Unified Monetization Engine — single pane of glass for revenue, entitlements, allocations, and reconciliation" />
+    <title>P31 Monetization Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  </head>
+  <body class="min-h-screen bg-void text-text-primary font-sans antialiased">
+    <div class="glass-panel fixed inset-0 -z-10 opacity-40" style={{ background: 'radial-gradient(ellipse at 50% 0%, rgba(0,240,255,0.08) 0%, transparent 60%)' }} />
+    <slot />
+  </body>
+</html>

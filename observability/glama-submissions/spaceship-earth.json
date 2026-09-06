@@ -1,0 +1,80 @@
+{
+  "name": "p31-spaceship-earth",
+  "description": "P31 Spaceship Earth MCP Server — Dome geometry, system health, DUNA readiness, PQC operations (Ed25519, ML-DSA-65, ML-KEM-768), EUDI Wallet VC 2.1 export, session management, semantic search, mesh networking. 16 tools.",
+  "url": "https://spaceship-earth.trimtab-signal.workers.dev/mcp",
+  "transport": "streamable-http",
+  "protocolVersion": "2026-07-28",
+  "capabilities": {
+    "tools": {}
+  },
+  "tools": [
+    {
+      "name": "duna_status",
+      "description": "Get DUNA readiness: member count vs target, progress bar, readiness label, and active ships. Read-only."
+    },
+    {
+      "name": "system_health",
+      "description": "Get system health: coherence, spoons, engagement, docked ports, and mesh status. Read-only."
+    },
+    {
+      "name": "dome_structure",
+      "description": "Get the docking-dome geometry facts: layers, mode, radius, outer edges, ports, NeoPixel segments, K4 tetra frame, inner dome. Read-only."
+    },
+    {
+      "name": "neo_pixel_control",
+      "description": "Set the NeoPixel LED controller state (mode, speed, color, brightness). Validated and persisted to the spaceship state file."
+    },
+    {
+      "name": "pqc_keygen",
+      "description": "Generate an Ed25519 or ML-DSA-65 hybrid keypair for post-quantum signing."
+    },
+    {
+      "name": "pqc_sign",
+      "description": "Sign data with Ed25519 or ML-DSA-65. Returns hex-encoded signature."
+    },
+    {
+      "name": "pqc_verify",
+      "description": "Verify Ed25519 or ML-DSA-65 signature against data."
+    },
+    {
+      "name": "kem_encapsulate",
+      "description": "Hybrid KEM encapsulate: ML-KEM-768 (FIPS 203) + X25519. Returns shared secret and ciphertext."
+    },
+    {
+      "name": "kem_decapsulate",
+      "description": "Hybrid KEM decapsulate: ML-KEM-768 + X25519. Returns shared secret."
+    },
+    {
+      "name": "eudi_export",
+      "description": "Export a W3C Verifiable Credential (VC 2.1) for the current spaceship-earth session or dome state. Returns a JSON VC ready for EUDI Wallet import."
+    },
+    {
+      "name": "eudi_verify",
+      "description": "Verify a W3C Verifiable Credential (VC 2.1) against its issuer DID. Returns validity status."
+    },
+    {
+      "name": "session_list",
+      "description": "List recent spaceship-earth sessions from the local sessions directory."
+    },
+    {
+      "name": "session_export",
+      "description": "Export a session record as a verifiable credential or JSON."
+    },
+    {
+      "name": "embedding_store",
+      "description": "Store a text embedding for semantic search over session history. Uses a local vector store."
+    },
+    {
+      "name": "embedding_search",
+      "description": "Semantic search over stored embeddings. Returns top-k most similar texts."
+    },
+    {
+      "name": "mesh_peers",
+      "description": "List known mesh peers from the local peer registry."
+    },
+    {
+      "name": "mesh_sync_status",
+      "description": "Get mesh synchronization status: last sync, peer count, pending ops."
+    }
+  ]
+}

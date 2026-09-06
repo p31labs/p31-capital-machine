@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.wrangler/
+*.log
+.env
+.env.*
+!.env.example
+!.env.go-live.example
+.admin_token
+.DS_Store
+*.tsbuildinfo
+.vscode/
+.idea/
+*.swp
+*.swo

@@ -1,0 +1,44 @@
+{
+  "name": "p31-design-mcp",
+  "description": "P31 Design System MCP Server — DTCG token resolution, component schemas, usage audit, layout generation, validation, auto-fix suggestions. 8 tools for the P31 quantum design system.",
+  "url": "stdio",
+  "transport": "streamable-http",
+  "protocolVersion": "2026-07-28",
+  "capabilities": {
+    "tools": {}
+  },
+  "tools": [
+    {
+      "name": "token_resolve",
+      "description": "Resolve a DTCG token path (e.g. --p31-accent) to its computed value with refs resolved."
+    },
+    {
+      "name": "component_schema",
+      "description": "Get the full schema definition for a named component (props, slots, states, accessibility)."
+    },
+    {
+      "name": "component_usage",
+      "description": "List which HTML/TSX files use a given component, with line numbers."
+    },
+    {
+      "name": "token_list",
+      "description": "List all available DTCG tokens grouped by category (color, spacing, typography, etc.)."
+    },
+    {
+      "name": "layout_generate",
+      "description": "Generate a responsive layout scaffold from a description (header/sidebar/content/footer)."
+    },
+    {
+      "name": "validate_component",
+      "description": "Validate a component against P31 design invariants (glass, spoons, WCAG, accent)."
+    },
+    {
+      "name": "audit_tokens",
+      "description": "Audit a CSS/TSX file for hardcoded colors, missing token references, and WCAG contrast violations."
+    },
+    {
+      "name": "suggest_fix",
+      "description": "Suggest a fix for a specific design violation (auto-fixable token swaps, glass panel upgrades, etc.)."
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  capital-machine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8787:8787"
+    environment:
+      - ENVIRONMENT=development
+      - RPC_URL_ETH=${RPC_URL_ETH:-http://anvil:8545}
+      - RPC_URL_BASE=${RPC_URL_BASE:-http://anvil:8545}
+      - RPC_URL_ARB=${RPC_URL_ARB:-http://anvil:8545}
+      - RPC_URL_SOL=${RPC_URL_SOL:-http://solana-validator:8899}
+      - RPC_URL_COSMOS=${RPC_URL_COSMOS:-http://cosmos:26657}
+      - PRIVATE_KEY_ETH=${PRIVATE_KEY_ETH:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}
+      - PRIVATE_KEY_SOL=${PRIVATE_KEY_SOL:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - DISCORD_WEBHOOK=${DISCORD_WEBHOOK:-}
+    depends_on:
+      - anvil
+      - solana-validator
+      - cosmos
+    volumes:
+      - ./workers:/app/workers
+      - ./chains:/app/chains
+      - ./shared:/app/shared
+      - ./infra:/app/infra
+
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    ports:
+      - "8545:8545"
+    command: anvil --host 0.0.0.0 --chain-id 31337
+
+  solana-validator:
+    image: solanalabs/solana:stable
+    ports:
+      - "8899:8899"
+      - "8900:8900"
+    command: solana-test-validator --host 0.0.0.0
+
+  cosmos:
+    image: ghcr.io/cosmos/ibc-go-simapp:latest
+    ports:
+      - "26657:26657"
+      - "26656:26656"
+
+  d1-migrate:
+    image: node:20-alpine
+    command: sh -c "npm ci && npx wrangler d1 execute capital-db --local --file=infra/migrations/001_schema.sql"
+    working_dir: /app
+    volumes:
+      - .:/app
+    depends_on:
+      - capital-machine
+
+volumes:
+  node_modules:

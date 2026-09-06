@@ -1,0 +1,15 @@
+name = "monetization-alerting"
+main = "src/index.ts"
+compatibility_date = "2026-08-19"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+REVENUE_LEDGER_URL = "https://revenue-ledger.trimtab-signal.workers.dev"
+ENTITLEMENT_URL = "https://entitlement.trimtab-signal.workers.dev"
+ALLOCATOR_URL = "https://capital-allocator.trimtab-signal.workers.dev"
+
+[triggers]
+crons = ["*/15 * * * *"]
+
+[observability]
+enabled = true

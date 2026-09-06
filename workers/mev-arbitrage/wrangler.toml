@@ -1,0 +1,16 @@
+name = "mev-arbitrage"
+main = "index.ts"
+compatibility_date = "2026-09-02"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "CAPITAL_DB"
+database_name = "capital-db"
+database_id = "93485b8c-9ee8-4fc5-879f-5d3a462eaef2"
+
+[[kv_namespaces]]
+binding = "CAPITAL_KV"
+id = "d81cd27a8b5f4d58905a49081c436ad9"
+
+[observability]
+enabled = true
