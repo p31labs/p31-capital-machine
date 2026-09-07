@@ -54,11 +54,11 @@ export class RevenueLedger {
   async ensureSchema(): Promise<void> {
     try {
       await this.db.exec('CREATE TABLE IF NOT EXISTS revenue_events (id TEXT PRIMARY KEY, source TEXT NOT NULL, payer_did TEXT NOT NULL, merchant_did TEXT NOT NULL, amount_usdc TEXT NOT NULL, asset TEXT NOT NULL, metadata TEXT, settlement_tx TEXT, created_at INTEGER NOT NULL, prev_hash TEXT NOT NULL, hash TEXT NOT NULL, UNIQUE(hash))');
+      await this.db.exec('CREATE UNIQUE INDEX IF NOT EXISTS uq_rev_prev_hash ON revenue_events(prev_hash)');
       await this.db.exec('CREATE INDEX IF NOT EXISTS idx_revenue_source ON revenue_events(source)');
       await this.db.exec('CREATE INDEX IF NOT EXISTS idx_revenue_payer ON revenue_events(payer_did)');
       await this.db.exec('CREATE INDEX IF NOT EXISTS idx_revenue_created ON revenue_events(created_at DESC)');
       await this.db.exec('CREATE INDEX IF NOT EXISTS idx_revenue_hash ON revenue_events(hash)');
-      await this.db.exec('CREATE TABLE IF NOT EXISTS chain_state (id TEXT PRIMARY KEY, prev_hash TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)');
     } catch (e) {
       console.log('Schema ensure error:', (e as Error).message);
     }
@@ -81,7 +81,6 @@ export class RevenueLedger {
 
   async recordRevenue(body: RecordRevenueRequest): Promise<RevenueRecordResult> {
     await this.ensureSchema();
-    await this.ensureChainState();
 
     const id = crypto.randomUUID();
     const created_at = Date.now();
@@ -91,18 +90,17 @@ export class RevenueLedger {
     // same script, so two isolates can both read the same chain head and then
     // each insert a sibling branch off that ancestor (the 93f4407d fork).
     //
-    // Instead we claim the authoritative head with a compare-and-swap on a
-    // chain_state slot: the advance (UPDATE WHERE version=?jumps to the next
-    // version) and the row insert are issued as one D1.batch(), which runs in a
-    // single transaction, so exactly one concurrent writer wins (changes:1);
-    // losers see changes:0 and retry against the winner's committed head.
-    for (let attempt = 0; attempt < 16; attempt++) {
-      const state = await this.db.prepare(
-        `SELECT prev_hash, version FROM chain_state WHERE id = 'revenue'`
-      ).first<{ prev_hash: string; version: number }>();
-
-      const prev_hash = state?.prev_hash || 'genesis';
-      const version = state?.version ?? 0;
+    // D1 guarantees atomicity of a single statement, NOT of multi-statement
+    // batches under concurrency (verified live: a D1.batch([UPDATE...CAS,
+    // INSERT]) let two isolates both pass the UPDATE and both insert).
+    //
+    // Correct primitive: a UNIQUE index on prev_hash at the storage layer. At
+    // most one row can ever claim a given predecessor, so exactly one writer
+    // wins per chain head; losers raise SQLITE_CONSTRAINT (code 7500) and retry
+    // against the winner's committed head. This is atomic across isolates by
+    // construction — the constraint is enforced by the database, not by us.
+    for (let attempt = 0; attempt < 32; attempt++) {
+      const prev_hash = await this.getLastHash();
 
       const payload = JSON.stringify({
         id,
@@ -119,13 +117,8 @@ export class RevenueLedger {
       const hash = await this.sha256(payload);
       const metadata = body.metadata ? JSON.stringify(body.metadata) : null;
 
-      const [updateRes, insertRes] = await this.db.batch([
-        this.db.prepare(
-          `UPDATE chain_state
-             SET prev_hash = ?, version = version + 1, updated_at = ?
-           WHERE id = 'revenue' AND version = ?`
-        ).bind(hash, Date.now(), version),
-        this.db.prepare(`
+      try {
+        await this.db.prepare(`
           INSERT INTO revenue_events (id, source, payer_did, merchant_did, amount_usdc, asset, metadata, settlement_tx, created_at, prev_hash, hash)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
@@ -140,11 +133,8 @@ export class RevenueLedger {
           created_at,
           prev_hash,
           hash
-        ),
-      ]);
+        ).run();
 
-      const won = (updateRes.meta?.changes ?? 0) === 1;
-      if (won) {
         this.logger.info('Revenue recorded', {
           id,
           source: body.source,
@@ -153,26 +143,22 @@ export class RevenueLedger {
           payer_did: body.payer_did,
         });
         return { id, hash, created_at };
-      }
+      } catch (e) {
+        const err = e as { message?: string; code?: number };
+        const msg = err?.message || '';
+        const isPrevConflict =
+          /UNIQUE constraint failed/i.test(msg) && /prev_hash/i.test(msg);
 
-      // Lost the CAS to a concurrent writer; retry against the new head.
-      if (!insertRes.success) {
-        throw new Error(`${insertRes.error || 'insert failed'}`);
+        if (!isPrevConflict && !(err?.code === 7500)) {
+          throw e;
+        }
+
+        // Lost the append to a concurrent writer (same prev_hash already
+        // claimed); retry against the new committed head.
       }
     }
 
-    throw new Error('chain append contended 16 times; try again');
-  }
-
-  private async ensureChainState(): Promise<void> {
-    try {
-      await this.db.prepare(
-        `INSERT OR IGNORE INTO chain_state (id, prev_hash, version, updated_at)
-         VALUES ('revenue', 'genesis', 0, ?)`
-      ).bind(Date.now()).run();
-    } catch (e) {
-      console.log('chain_state ensure error:', (e as Error).message);
-    }
+    throw new Error('chain append contended 32 times; try again');
   }
 
   async getRevenueSummary(sourceFilter: string | null, range: string): Promise<RevenueSummary> {
@@ -334,28 +320,45 @@ export class RevenueLedger {
     await this.ensureSchema();
 
     const all = await this.db.prepare(`
-      SELECT id, hash, prev_hash, rowid FROM revenue_events ORDER BY created_at ASC, rowid ASC
-    `).all<{ id: string; hash: string; prev_hash: string; rowid: number }>();
+      SELECT id, hash, prev_hash FROM revenue_events
+    `).all<{ id: string; hash: string; prev_hash: string }>();
 
     const results = all.results || [];
-    let previousHash = 'genesis';
 
+    // Walk the chain by prev_hash linkage, NOT by created_at/rowid. Retries in
+    // recordRevenue reuse a single created_at, so timestamp ordering does not
+    // reflect append order under concurrency. Each prev_hash is UNIQUE (at most
+    // one row may claim a given predecessor), making this walk deterministic.
+    const byPrev = new Map<string, { id: string; hash: string; prev_hash: string }>();
     for (const row of results) {
-      if (row.prev_hash !== previousHash) {
-        return {
-          valid: false,
-          total_entries: results.length,
-          broken_at: row.id,
-          last_hash: previousHash,
-        };
+      byPrev.set(row.prev_hash, row);
+    }
+
+    const ordered: string[] = [];
+    let cursor = 'genesis';
+    const visited = new Set<string>();
+    while (true) {
+      const row = byPrev.get(cursor);
+      if (!row) break;
+      // Guard against a rewritten ancestor: a predecessor can't be claimed twice.
+      if (visited.has(row.hash)) {
+        return { valid: false, total_entries: results.length, broken_at: row.id, last_hash: cursor };
       }
-      previousHash = row.hash;
+      visited.add(row.hash);
+      ordered.push(row.id);
+      cursor = row.hash;
+    }
+
+    // Every row must be reachable from genesis exactly once.
+    if (ordered.length !== results.length) {
+      const orphan = results.find(r => !visited.has(r.hash));
+      return { valid: false, total_entries: results.length, broken_at: orphan?.id || 'unknown', last_hash: cursor };
     }
 
     return {
       valid: true,
       total_entries: results.length,
-      last_hash: results.length > 0 ? results[results.length - 1].hash : 'genesis',
+      last_hash: results.length > 0 ? cursor : 'genesis',
     };
   }
 

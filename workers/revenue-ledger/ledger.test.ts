@@ -1,10 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+interface Row {
+  id: string;
+  source: string;
+  payer_did: string;
+  merchant_did: string;
+  amount_usdc: string;
+  asset: string;
+  metadata: string | null;
+  settlement_tx: string | null;
+  created_at: number;
+  prev_hash: string;
+  hash: string;
+}
+
+let store: Row[] = [];
+let prevClaims = new Map<string, string>();
+
 class MockD1Statement {
   private sql: string;
   private bindArgs: any[];
-  private results: any = { count: 0, total: 0 };
-  private allResults: any = { results: [] };
 
   constructor(sql: string) {
     this.sql = sql;
@@ -16,14 +31,65 @@ class MockD1Statement {
     return this;
   }
 
-  async first() { return this.results; }
-  async all() { return this.allResults; }
-  async run() { return { success: true }; }
+  async first() {
+    if (/SELECT hash FROM revenue_events ORDER BY rowid DESC LIMIT 1/i.test(this.sql)) {
+      const last = store[store.length - 1];
+      return last ? { hash: last.hash } : undefined;
+    }
+    return undefined;
+  }
+
+  async all() {
+    if (/SELECT id, hash, prev_hash FROM revenue_events/i.test(this.sql)) {
+      return { results: store.map(r => ({ id: r.id, hash: r.hash, prev_hash: r.prev_hash })) };
+    }
+    return { results: [] };
+  }
+
+  async run() {
+    if (/INSERT INTO revenue_events/i.test(this.sql)) {
+      const b = this.bindArgs;
+      const row: Row = {
+        id: b[0],
+        source: b[1],
+        payer_did: b[2],
+        merchant_did: b[3],
+        amount_usdc: b[4],
+        asset: b[5],
+        metadata: b[6],
+        settlement_tx: b[7],
+        created_at: b[8],
+        prev_hash: b[9],
+        hash: b[10],
+      };
+      // Enforce UNIQUE(prev_hash) exactly like the real D1 index.
+      if (prevClaims.has(row.prev_hash)) {
+        const err: any = new Error('UNIQUE constraint failed: revenue_events.prev_hash');
+        err.code = 7500;
+        throw err;
+      }
+      store.push(row);
+      prevClaims.set(row.prev_hash, row.hash);
+      return { success: true, meta: { changes: 1 } } as any;
+    }
+    return { success: true } as any;
+  }
+
+  async doRun() {
+    return this.run();
+  }
 }
 
 const mockDB = {
   prepare: vi.fn((sql: string) => new MockD1Statement(sql)),
   exec: vi.fn().mockResolvedValue(undefined),
+  batch: vi.fn(async (statements: MockD1Statement[]) => {
+    const results: any[] = [];
+    for (const stmt of statements) {
+      results.push(await stmt.doRun());
+    }
+    return results;
+  }),
 };
 
 import { RevenueLedger } from './ledger';
@@ -33,6 +99,8 @@ describe('RevenueLedger', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    store = [];
+    prevClaims = new Map();
     ledger = new RevenueLedger(mockDB as any, {
       info: vi.fn(),
       error: vi.fn(),
@@ -122,7 +190,7 @@ describe('RevenueLedger', () => {
 
   it('should record revenue from different sources', async () => {
     const sources: Array<'x402' | 'taler' | 'gumroad' | 'btcpay' | 'love'> = ['x402', 'taler', 'gumroad', 'btcpay', 'love'];
-    
+
     for (const source of sources) {
       const result = await ledger.recordRevenue({
         source,
@@ -158,5 +226,25 @@ describe('RevenueLedger', () => {
     expect(hashes[0]).not.toBe(hashes[1]);
     expect(hashes[1]).not.toBe(hashes[2]);
     expect(hashes[0]).not.toBe(hashes[2]);
+
+    const verification = await ledger.verifyHashChain();
+    expect(verification.valid).toBe(true);
+    expect(verification.total_entries).toBe(3);
+  });
+
+  it('should retry and still chain when two writers claim the same head', async () => {
+    // Simulate two concurrent appends reading the same genesis head: the
+    // second must hit UNIQUE(prev_hash) and retry; both must still attach to
+    // the chain.
+    const results = await Promise.all([
+      ledger.recordRevenue({ source: 'x402', payer_did: 'did:key:a', merchant_did: 'did:key:m', amount_usdc: '1.00', asset: 'USDC' }),
+      ledger.recordRevenue({ source: 'x402', payer_did: 'did:key:b', merchant_did: 'did:key:m', amount_usdc: '1.00', asset: 'USDC' }),
+    ]);
+    expect(results).toHaveLength(2);
+    expect(results[0].hash).not.toBe(results[1].hash);
+
+    const verification = await ledger.verifyHashChain();
+    expect(verification.valid).toBe(true);
+    expect(verification.total_entries).toBe(2);
   });
 });
