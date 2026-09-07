@@ -73,7 +73,7 @@ export class RevenueLedger {
 
   private async getLastHash(): Promise<string> {
     const result = await this.db.prepare(
-      'SELECT hash FROM revenue_events ORDER BY created_at DESC, rowid DESC LIMIT 1'
+      'SELECT hash FROM revenue_events ORDER BY rowid DESC LIMIT 1'
     ).first<{ hash: string }>();
     return result?.hash || 'genesis';
   }
@@ -83,50 +83,86 @@ export class RevenueLedger {
 
     const id = crypto.randomUUID();
     const created_at = Date.now();
-    const prev_hash = await this.getLastHash();
+    // Serialize the read-tail -> hash -> insert critical section. D1 (in the
+    // Workers binding) exposes no user transaction API, so concurrent requests
+    // in the same millisecond each read the same prev_hash (lost update) and
+    // each insert a sibling branch off the same ancestor (the 93f4407d fork).
+    // The worker is single-threaded, so an in-process mutex around the
+    // await-bounded section guarantees prev_hash reflects the just-committed
+    // tail for any concurrent writer on this instance.
+    const res = await this.seqLock(async () => {
+      const prev_hash = await this.getLastHash();
 
-    const payload = JSON.stringify({
-      id,
-      source: body.source,
-      payer_did: body.payer_did,
-      merchant_did: body.merchant_did,
-      amount_usdc: body.amount_usdc,
-      asset: body.asset,
-      settlement_tx: body.settlement_tx || null,
-      created_at,
-      prev_hash,
+      const payload = JSON.stringify({
+        id,
+        source: body.source,
+        payer_did: body.payer_did,
+        merchant_did: body.merchant_did,
+        amount_usdc: body.amount_usdc,
+        asset: body.asset,
+        settlement_tx: body.settlement_tx || null,
+        created_at,
+        prev_hash,
+      });
+
+      const hash = await this.sha256(payload);
+      const metadata = body.metadata ? JSON.stringify(body.metadata) : null;
+
+      await this.db.prepare(`
+        INSERT INTO revenue_events (id, source, payer_did, merchant_did, amount_usdc, asset, metadata, settlement_tx, created_at, prev_hash, hash)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        id,
+        body.source,
+        body.payer_did,
+        body.merchant_did,
+        body.amount_usdc,
+        body.asset,
+        metadata,
+        body.settlement_tx || null,
+        created_at,
+        prev_hash,
+        hash
+      ).run();
+
+      this.logger.info('Revenue recorded', {
+        id,
+        source: body.source,
+        amount: body.amount_usdc,
+        asset: body.asset,
+        payer_did: body.payer_did,
+      });
+
+      return { id, hash, created_at };
     });
 
-    const hash = await this.sha256(payload);
+    return res;
+  }
 
-    const metadata = body.metadata ? JSON.stringify(body.metadata) : null;
-
-    await this.db.prepare(`
-      INSERT INTO revenue_events (id, source, payer_did, merchant_did, amount_usdc, asset, metadata, settlement_tx, created_at, prev_hash, hash)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      id,
-      body.source,
-      body.payer_did,
-      body.merchant_did,
-      body.amount_usdc,
-      body.asset,
-      metadata,
-      body.settlement_tx || null,
-      created_at,
-      prev_hash,
-      hash
-    ).run();
-
-    this.logger.info('Revenue recorded', {
-      id,
-      source: body.source,
-      amount: body.amount_usdc,
-      asset: body.asset,
-      payer_did: body.payer_did,
-    });
-
-    return { id, hash, created_at };
+  // ---- concurrency guard for the hash-chain append -------------------------
+  // Workers are single-threaded, but `await this.getLastHash()` is an async
+  // hop between reading the chain tail and inserting the next record. Two
+  // concurrent requests in the same millisecond would both read the same
+  // prev_hash and each insert a sibling branch (the 93f4407d fork). We
+  // serialize the critical section with an async mutex: concurrent writers
+  // queue, so the second always observes the first's committed hash. We queue
+  // rather than reject so concurrent webhooks (e.g. x402 + gumrail) don't 500.
+  private lockP: Promise<void> | null = null;
+  private async seqLock<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.lockP) {
+      await this.lockP;
+      return this.seqLock(fn);
+    }
+    let release!: () => void;
+    this.lockP = new Promise<void>((r) => { release = r; });
+    try {
+      return await fn();
+    } finally {
+      release();
+      const pending = this.lockP;
+      this.lockP = null;
+      await pending; // let a queued waiter acquire in order
+    }
   }
 
   async getRevenueSummary(sourceFilter: string | null, range: string): Promise<RevenueSummary> {
@@ -194,7 +230,13 @@ export class RevenueLedger {
     const avg = count > 0 ? total_usdc / count : 0;
 
     return {
-      total_usdc: String(total_usdc + total_x402),
+      // total_usdc already includes x402 (see accumulation above: source in
+      // 'USDC' | 'x402' | 'btcpay'), so DO NOT add total_x402 again — adding it
+      // double-counts x402 revenue and contradicts /metrics. This must equal the
+      // /metrics revenue_total_usdc value (gumroad + x402 + btcpay).
+      // LOVE is tracked separately as a non-revenue care-credit source
+      // (total_love); it is deliberately NOT netted into total_usdc.
+      total_usdc: String(total_usdc),
       total_eur: String(total_eur),
       total_love: String(total_love),
       total_x402: String(total_x402),
@@ -281,8 +323,8 @@ export class RevenueLedger {
     await this.ensureSchema();
 
     const all = await this.db.prepare(`
-      SELECT id, hash, prev_hash FROM revenue_events ORDER BY created_at ASC
-    `).all<{ id: string; hash: string; prev_hash: string }>();
+      SELECT id, hash, prev_hash, rowid FROM revenue_events ORDER BY created_at ASC, rowid ASC
+    `).all<{ id: string; hash: string; prev_hash: string; rowid: number }>();
 
     const results = all.results || [];
     let previousHash = 'genesis';
