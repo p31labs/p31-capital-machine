@@ -6,7 +6,8 @@ export class AuditTrail {
   }
 
   async ensureSchema() {
-    await this.db.exec("CREATE TABLE IF NOT EXISTS audit_events (id TEXT PRIMARY KEY, timestamp INTEGER NOT NULL, event_type TEXT NOT NULL, actor_did TEXT, action TEXT NOT NULL, target TEXT, metadata TEXT, hash TEXT NOT NULL, previous_hash TEXT)");
+    await this.db.exec("CREATE TABLE IF NOT EXISTS audit_events (id TEXT PRIMARY KEY, timestamp INTEGER NOT NULL, event_type TEXT NOT NULL, actor_did TEXT, action TEXT NOT NULL, target TEXT, metadata TEXT, hash TEXT NOT NULL, previous_hash TEXT NOT NULL, UNIQUE(hash))");
+    await this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS uq_audit_prev_hash ON audit_events(previous_hash)");
   }
 
   async record(event: {
@@ -18,27 +19,60 @@ export class AuditTrail {
   }): Promise<string> {
     await this.ensureSchema();
 
-    const prev = await this.db.prepare(
-      'SELECT hash FROM audit_events ORDER BY timestamp DESC LIMIT 1'
-    ).first<{ hash: string }>();
-    const previousHash = prev?.hash || 'genesis';
-
     const id = crypto.randomUUID();
     const timestamp = Date.now();
-    const data = `${id}:${timestamp}:${event.event_type}:${event.action}:${previousHash}`;
-    const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data));
-    const hash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 
-    await this.db.prepare(`
-      INSERT INTO audit_events (id, timestamp, event_type, actor_did, action, target, metadata, hash, previous_hash)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      id, timestamp, event.event_type, event.actor_did || null,
-      event.action, event.target || null,
-      JSON.stringify(event.metadata || {}), hash, previousHash
-    ).run();
+    // Same linearization as the revenue ledger: a UNIQUE index on
+    // previous_hash means at most one event may claim a given predecessor, so
+    // exactly one concurrent writer wins per audit-chain head; losers surface
+    // SQLITE_CONSTRAINT and retry against the winner's committed head.
+    for (let attempt = 0; attempt < 32; attempt++) {
+      const prev = await this.db.prepare(
+        'SELECT hash FROM audit_events ORDER BY timestamp DESC, rowid DESC LIMIT 1'
+      ).first<{ hash: string }>();
+      const previousHash = prev?.hash || 'genesis';
 
-    return hash;
+      const data = `${id}:${timestamp}:${event.event_type}:${event.action}:${previousHash}`;
+      const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data));
+      const hash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+      try {
+        await this.db.prepare(`
+          INSERT INTO audit_events (id, timestamp, event_type, actor_did, action, target, metadata, hash, previous_hash)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          id, timestamp, event.event_type, event.actor_did || null,
+          event.action, event.target || null,
+          JSON.stringify(event.metadata || {}), hash, previousHash
+        ).run();
+
+        return hash;
+      } catch (e) {
+        const err = e as { message?: string; code?: number; cause?: any; name?: string };
+        const serialized = JSON.stringify(err, Object.getOwnPropertyNames(err ?? {}));
+        const msg = [
+          err?.message,
+          err?.name,
+          err?.code,
+          err?.cause instanceof Error ? err.cause.message : err?.cause?.message,
+          serialized,
+        ].filter(Boolean).join(' ');
+
+        const isConstraint =
+          /UNIQUE constraint failed/i.test(msg) ||
+          /SQLITE_CONSTRAINT/i.test(msg) ||
+          /previous_hash/i.test(msg) ||
+          msg.includes('7500') ||
+          msg.includes('audit_events.hash');
+
+        if (!isConstraint) {
+          throw e;
+        }
+        // Lost the append to a concurrent writer; retry against new head.
+      }
+    }
+
+    throw new Error('audit chain append contended 32 times; try again');
   }
 
   async logEvent(event_type: string, metadata?: Record<string, any>): Promise<string> {
@@ -96,15 +130,28 @@ export class AuditTrail {
   async verifyChain(): Promise<{ valid: boolean; brokenAt?: string }> {
     await this.ensureSchema();
     const events = await this.db.prepare(
-      'SELECT * FROM audit_events ORDER BY timestamp ASC'
+      'SELECT id, hash, previous_hash FROM audit_events'
     ).all<any>();
 
-    let previousHash = 'genesis';
+    const byPrev = new Map<string, any>();
     for (const event of events.results || []) {
-      if (event.previous_hash !== previousHash) {
+      byPrev.set(event.previous_hash, event);
+    }
+
+    const visited = new Map<string, string>();
+    let cursor = 'genesis';
+    while (true) {
+      const event = byPrev.get(cursor);
+      if (!event) break;
+      if (visited.has(event.hash)) {
         return { valid: false, brokenAt: event.id };
       }
-      previousHash = event.hash;
+      visited.set(event.hash, event.id);
+      cursor = event.hash;
+    }
+
+    if (visited.size !== (events.results || []).length) {
+      return { valid: false, brokenAt: 'unreachable' };
     }
     return { valid: true };
   }
