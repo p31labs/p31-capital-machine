@@ -26,7 +26,7 @@ export class AuditTrail {
     // previous_hash means at most one event may claim a given predecessor, so
     // exactly one concurrent writer wins per audit-chain head; losers surface
     // SQLITE_CONSTRAINT and retry against the winner's committed head.
-    for (let attempt = 0; attempt < 32; attempt++) {
+    for (let attempt = 0; attempt < 64; attempt++) {
       const prev = await this.db.prepare(
         'SELECT hash FROM audit_events ORDER BY rowid DESC LIMIT 1'
       ).first<{ hash: string }>();
@@ -69,10 +69,12 @@ export class AuditTrail {
           throw e;
         }
         // Lost the append to a concurrent writer; retry against new head.
+        const backoffMs = Math.min(64, 1 + Math.floor(Math.random() * (attempt + 2)));
+        await new Promise(r => setTimeout(r, backoffMs));
       }
     }
 
-    throw new Error('audit chain append contended 32 times; try again');
+    throw new Error('audit chain append contended 64 times; try again');
   }
 
   async logEvent(event_type: string, metadata?: Record<string, any>): Promise<string> {

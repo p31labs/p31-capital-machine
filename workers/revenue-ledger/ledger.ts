@@ -99,7 +99,7 @@ export class RevenueLedger {
     // wins per chain head; losers raise SQLITE_CONSTRAINT (code 7500) and retry
     // against the winner's committed head. This is atomic across isolates by
     // construction — the constraint is enforced by the database, not by us.
-    for (let attempt = 0; attempt < 32; attempt++) {
+    for (let attempt = 0; attempt < 64; attempt++) {
       const prev_hash = await this.getLastHash();
 
       const payload = JSON.stringify({
@@ -141,24 +141,44 @@ export class RevenueLedger {
           amount: body.amount_usdc,
           asset: body.asset,
           payer_did: body.payer_did,
+          prev_hash,
+          hash,
+          created_at,
         });
         return { id, hash, created_at };
       } catch (e) {
-        const err = e as { message?: string; code?: number };
-        const msg = err?.message || '';
-        const isPrevConflict =
-          /UNIQUE constraint failed/i.test(msg) && /prev_hash/i.test(msg);
+        const err = e as { message?: string; code?: number; cause?: any; name?: string };
+        const serialized = JSON.stringify(err, Object.getOwnPropertyNames(err ?? {}));
+        const msg = [
+          err?.message,
+          err?.name,
+          err?.code,
+          err?.cause instanceof Error ? err.cause.message : err?.cause?.message,
+          serialized,
+        ].filter(Boolean).join(' ');
 
-        if (!isPrevConflict && !(err?.code === 7500)) {
+        const isConstraint =
+          /UNIQUE constraint failed/i.test(msg) ||
+          /SQLITE_CONSTRAINT/i.test(msg) ||
+          /prev_hash/i.test(msg) ||
+          msg.includes('7500') ||
+          msg.includes('revenue_events.hash');
+
+        if (!isConstraint) {
+          console.log('recordRevenue [UNEXPECTED] attempt', attempt, msg.slice(0, 500));
           throw e;
         }
 
-        // Lost the append to a concurrent writer (same prev_hash already
-        // claimed); retry against the new committed head.
+        console.log('recordRevenue retry chain head contended (attempt', attempt, ')');
+        // Jittered backoff: colliding writers re-reading the same freshly
+        // claimed head produce a thundering herd; a few ms of random wait
+        // spreads retries so someone re-reads the new head first.
+        const backoffMs = Math.min(64, 1 + Math.floor(Math.random() * (attempt + 2)));
+        await new Promise(r => setTimeout(r, backoffMs));
       }
     }
 
-    throw new Error('chain append contended 32 times; try again');
+    throw new Error('chain append contended 64 times; try again');
   }
 
   async getRevenueSummary(sourceFilter: string | null, range: string): Promise<RevenueSummary> {
