@@ -216,7 +216,8 @@ export class RevenueLedger {
     for (const row of results) {
       const amount = row.total_usdc || 0;
       count += row.count;
-      total_usdc += row.source === 'USDC' || row.source === 'x402' || row.source === 'btcpay' ? amount : 0;
+      const isUsdc = row.source === 'USDC' || row.source === 'x402' || row.source === 'btcpay' || row.source === 'gumroad';
+      total_usdc += isUsdc ? amount : 0;
       total_eur += row.source === 'taler' ? amount : 0;
       total_love += row.source === 'love' ? amount : 0;
       total_x402 += row.source === 'x402' ? amount : 0;
@@ -368,5 +369,21 @@ export class RevenueLedger {
       settlement_status: 'settled',
       discrepancy: 0,
     }));
+  }
+
+  async reconcile(): Promise<{
+    stored: Array<{ source: string; ledger_balance: number }>;
+    matched: boolean;
+    unreconciled: Array<{ source: string; ledger_balance: number; settlement_status: string; discrepancy: number }>;
+  }> {
+    await this.ensureSchema();
+    const entries = await this.getReconciliationEntries();
+    const stored = entries.map(e => ({ source: e.source, ledger_balance: e.ledger_balance }));
+    const unreconciled = entries.filter(e => e.discrepancy !== 0);
+    return {
+      stored,
+      matched: unreconciled.length === 0,
+      unreconciled,
+    };
   }
 }

@@ -41,6 +41,34 @@ export class AuditTrail {
     return hash;
   }
 
+  async logEvent(event_type: string, metadata?: Record<string, any>): Promise<string> {
+    return this.record({
+      event_type,
+      actor_did: metadata?.actor_did || metadata?.merchant_did || 'system',
+      action: event_type,
+      target: metadata?.id ? String(metadata.id) : undefined,
+      metadata,
+    });
+  }
+
+  async getEvents(
+    event_type?: string,
+    actor_did?: string,
+    since?: string,
+    limit: number = 100
+  ): Promise<any[]> {
+    return this.query({
+      event_type: event_type || undefined,
+      actor_did: actor_did || undefined,
+      since: since ? parseInt(since, 10) || undefined : undefined,
+      limit,
+    });
+  }
+
+  async verifyIntegrity(): Promise<{ valid: boolean; brokenAt?: string }> {
+    return this.verifyChain();
+  }
+
   async query(filters: {
     event_type?: string;
     actor_did?: string;
