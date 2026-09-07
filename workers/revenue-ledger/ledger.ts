@@ -58,6 +58,7 @@ export class RevenueLedger {
       await this.db.exec('CREATE INDEX IF NOT EXISTS idx_revenue_payer ON revenue_events(payer_did)');
       await this.db.exec('CREATE INDEX IF NOT EXISTS idx_revenue_created ON revenue_events(created_at DESC)');
       await this.db.exec('CREATE INDEX IF NOT EXISTS idx_revenue_hash ON revenue_events(hash)');
+      await this.db.exec('CREATE TABLE IF NOT EXISTS chain_state (id TEXT PRIMARY KEY, prev_hash TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)');
     } catch (e) {
       console.log('Schema ensure error:', (e as Error).message);
     }
@@ -80,18 +81,28 @@ export class RevenueLedger {
 
   async recordRevenue(body: RecordRevenueRequest): Promise<RevenueRecordResult> {
     await this.ensureSchema();
+    await this.ensureChainState();
 
     const id = crypto.randomUUID();
     const created_at = Date.now();
-    // Serialize the read-tail -> hash -> insert critical section. D1 (in the
-    // Workers binding) exposes no user transaction API, so concurrent requests
-    // in the same millisecond each read the same prev_hash (lost update) and
-    // each insert a sibling branch off the same ancestor (the 93f4407d fork).
-    // The worker is single-threaded, so an in-process mutex around the
-    // await-bounded section guarantees prev_hash reflects the just-committed
-    // tail for any concurrent writer on this instance.
-    const res = await this.seqLock(async () => {
-      const prev_hash = await this.getLastHash();
+
+    // Linearize appends across ALL worker isolates. An in-process mutex only
+    // serializes within a single isolate; Cloudflare runs many isolates of the
+    // same script, so two isolates can both read the same chain head and then
+    // each insert a sibling branch off that ancestor (the 93f4407d fork).
+    //
+    // Instead we claim the authoritative head with a compare-and-swap on a
+    // chain_state slot: the advance (UPDATE WHERE version=?jumps to the next
+    // version) and the row insert are issued as one D1.batch(), which runs in a
+    // single transaction, so exactly one concurrent writer wins (changes:1);
+    // losers see changes:0 and retry against the winner's committed head.
+    for (let attempt = 0; attempt < 16; attempt++) {
+      const state = await this.db.prepare(
+        `SELECT prev_hash, version FROM chain_state WHERE id = 'revenue'`
+      ).first<{ prev_hash: string; version: number }>();
+
+      const prev_hash = state?.prev_hash || 'genesis';
+      const version = state?.version ?? 0;
 
       const payload = JSON.stringify({
         id,
@@ -108,60 +119,59 @@ export class RevenueLedger {
       const hash = await this.sha256(payload);
       const metadata = body.metadata ? JSON.stringify(body.metadata) : null;
 
-      await this.db.prepare(`
-        INSERT INTO revenue_events (id, source, payer_did, merchant_did, amount_usdc, asset, metadata, settlement_tx, created_at, prev_hash, hash)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(
-        id,
-        body.source,
-        body.payer_did,
-        body.merchant_did,
-        body.amount_usdc,
-        body.asset,
-        metadata,
-        body.settlement_tx || null,
-        created_at,
-        prev_hash,
-        hash
-      ).run();
+      const [updateRes, insertRes] = await this.db.batch([
+        this.db.prepare(
+          `UPDATE chain_state
+             SET prev_hash = ?, version = version + 1, updated_at = ?
+           WHERE id = 'revenue' AND version = ?`
+        ).bind(hash, Date.now(), version),
+        this.db.prepare(`
+          INSERT INTO revenue_events (id, source, payer_did, merchant_did, amount_usdc, asset, metadata, settlement_tx, created_at, prev_hash, hash)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          id,
+          body.source,
+          body.payer_did,
+          body.merchant_did,
+          body.amount_usdc,
+          body.asset,
+          metadata,
+          body.settlement_tx || null,
+          created_at,
+          prev_hash,
+          hash
+        ),
+      ]);
 
-      this.logger.info('Revenue recorded', {
-        id,
-        source: body.source,
-        amount: body.amount_usdc,
-        asset: body.asset,
-        payer_did: body.payer_did,
-      });
+      const won = (updateRes.meta?.changes ?? 0) === 1;
+      if (won) {
+        this.logger.info('Revenue recorded', {
+          id,
+          source: body.source,
+          amount: body.amount_usdc,
+          asset: body.asset,
+          payer_did: body.payer_did,
+        });
+        return { id, hash, created_at };
+      }
 
-      return { id, hash, created_at };
-    });
+      // Lost the CAS to a concurrent writer; retry against the new head.
+      if (!insertRes.success) {
+        throw new Error(`${insertRes.error || 'insert failed'}`);
+      }
+    }
 
-    return res;
+    throw new Error('chain append contended 16 times; try again');
   }
 
-  // ---- concurrency guard for the hash-chain append -------------------------
-  // Workers are single-threaded, but `await this.getLastHash()` is an async
-  // hop between reading the chain tail and inserting the next record. Two
-  // concurrent requests in the same millisecond would both read the same
-  // prev_hash and each insert a sibling branch (the 93f4407d fork). We
-  // serialize the critical section with an async mutex: concurrent writers
-  // queue, so the second always observes the first's committed hash. We queue
-  // rather than reject so concurrent webhooks (e.g. x402 + gumrail) don't 500.
-  private lockP: Promise<void> | null = null;
-  private async seqLock<T>(fn: () => Promise<T>): Promise<T> {
-    if (this.lockP) {
-      await this.lockP;
-      return this.seqLock(fn);
-    }
-    let release!: () => void;
-    this.lockP = new Promise<void>((r) => { release = r; });
+  private async ensureChainState(): Promise<void> {
     try {
-      return await fn();
-    } finally {
-      release();
-      const pending = this.lockP;
-      this.lockP = null;
-      await pending; // let a queued waiter acquire in order
+      await this.db.prepare(
+        `INSERT OR IGNORE INTO chain_state (id, prev_hash, version, updated_at)
+         VALUES ('revenue', 'genesis', 0, ?)`
+      ).bind(Date.now()).run();
+    } catch (e) {
+      console.log('chain_state ensure error:', (e as Error).message);
     }
   }
 
