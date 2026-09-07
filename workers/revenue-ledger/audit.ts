@@ -28,7 +28,7 @@ export class AuditTrail {
     // SQLITE_CONSTRAINT and retry against the winner's committed head.
     for (let attempt = 0; attempt < 32; attempt++) {
       const prev = await this.db.prepare(
-        'SELECT hash FROM audit_events ORDER BY timestamp DESC, rowid DESC LIMIT 1'
+        'SELECT hash FROM audit_events ORDER BY rowid DESC LIMIT 1'
       ).first<{ hash: string }>();
       const previousHash = prev?.hash || 'genesis';
 
