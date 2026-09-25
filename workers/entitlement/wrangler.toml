@@ -6,7 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "ENTITLEMENT_DB"
 database_name = "entitlement-db"
-database_id = "9b00fb88-8266-4f07-ab31-0d9f9f2ce611"
+database_id = "e9e18c25-0e25-48f3-9439-3fcd755f98c0"
 
 [triggers]
 crons = ["0 0 1 * *"]

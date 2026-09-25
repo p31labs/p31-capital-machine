@@ -9,6 +9,8 @@
     "deploy:staging": "bash infra/deploy.sh all staging",
     "deploy:module": "bash infra/deploy.sh",
     "secrets": "bash infra/setup-secrets.sh",
+    "backup:d1": "node scripts/backup-d1.mjs",
+    "check:d1": "node scripts/verify-d1.mjs",
     "migrate": "npx wrangler d1 execute capital-db --remote --file=infra/migrations/001_schema.sql",
     "seed": "npx wrangler d1 execute capital-db --remote --file=infra/seed.sql",
     "dev:orchestrator": "npx wrangler dev workers/capital-machine/index.ts --local",

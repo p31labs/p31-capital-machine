@@ -6,7 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "REVENUE_DB"
 database_name = "revenue-db"
-database_id = "4d8c6c09-1486-403a-b5fc-b2947da9e36c"
+database_id = "1f219ab8-0fd0-473e-b260-5492f2c1f415"
 
 [observability]
 enabled = true

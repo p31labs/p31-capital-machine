@@ -1,0 +1,35 @@
+name: D1 Nightly Backup
+
+on:
+  schedule:
+    - cron: '30 3 * * *'   # 03:30 UTC daily
+  workflow_dispatch:
+
+jobs:
+  backup:
+    name: Export all capital-machine D1 databases
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Skip if no Cloudflare credentials
+        if: env.CLOUDFLARE_API_TOKEN == ''
+        run: echo "::warning::CLOUDFLARE_API_TOKEN not set — skipping D1 backup"
+      - name: Install wrangler
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        run: npm install -g wrangler
+      - name: Backup all databases
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        run: node scripts/backup-d1.mjs
+      - name: Upload backup artifact
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-backups
+          path: infra/backups/
+          retention-days: 30

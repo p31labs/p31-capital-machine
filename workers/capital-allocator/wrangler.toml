@@ -9,7 +9,7 @@ mode = "smart"
 [[d1_databases]]
 binding = "ALLOCATOR_DB"
 database_name = "allocator-db"
-database_id = "c2e667c0-8f66-417e-8ef1-bda66f3959f8"
+database_id = "d12543b9-f273-4f35-bfeb-66ce5a4800b1"
 
 [observability]
 enabled = true

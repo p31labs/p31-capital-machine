@@ -6,7 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "CAPITAL_DB"
 database_name = "capital-db"
-database_id = "93485b8c-9ee8-4fc5-879f-5d3a462eaef2"
+database_id = "fd439548-52c8-4798-8c17-10567a9d1a01"
 
 [[kv_namespaces]]
 binding = "CAPITAL_KV"

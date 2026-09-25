@@ -6,7 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "CONFIG_DB"
 database_name = "config-db"
-database_id = "6bd958c8-9cad-449e-a188-68810dab5690"
+database_id = "7cb8d8fb-4f9d-41fc-a314-aaa7b88b0343"
 
 [[kv_namespaces]]
 binding = "CONFIG_KV"
