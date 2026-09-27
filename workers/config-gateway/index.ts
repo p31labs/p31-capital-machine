@@ -250,6 +250,41 @@ export default {
         });
       }
 
+      // SLO source — availability + latency percentiles over a rolling window.
+      if (path === '/api/usage/sli' && method === 'GET') {
+        const minutes = parseInt(url.searchParams.get('minutes') || '1440');
+        if (isNaN(minutes) || minutes <= 0) return json({ error: 'Invalid minutes' }, 400);
+        const since = Date.now() - (minutes * 60000);
+
+        const total = await env.CONFIG_DB.prepare(
+          'SELECT COUNT(*) as n FROM api_usage WHERE timestamp >= ?'
+        ).bind(since).first<{ n: number }>();
+        const ok = await env.CONFIG_DB.prepare(
+          'SELECT COUNT(*) as n FROM api_usage WHERE timestamp >= ? AND status < 500'
+        ).bind(since).first<{ n: number }>();
+        const latencies = await env.CONFIG_DB.prepare(
+          'SELECT latency_ms FROM api_usage WHERE timestamp >= ? AND latency_ms IS NOT NULL'
+        ).bind(since).all<{ latency_ms: number }>();
+
+        const values = (latencies.results || []).map(r => r.latency_ms).sort((a, b) => a - b);
+        const pct = (p: number): number | null => {
+          if (!values.length) return null;
+          const idx = Math.ceil((p / 100) * values.length) - 1;
+          return values[Math.max(0, idx)];
+        };
+
+        const calls = total?.n || 0;
+        const oks = ok?.n || 0;
+        return json({
+          window_minutes: minutes,
+          total_calls: calls,
+          ok_calls: oks,
+          availability: calls ? oks / calls : null,
+          p95_latency_ms: pct(95),
+          p99_latency_ms: pct(99),
+        });
+      }
+
       return json({ error: 'Not found' }, 404);
     } catch (e) {
       return json({ error: e instanceof Error ? e.message : 'Unknown error' }, 500);

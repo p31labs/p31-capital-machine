@@ -16,7 +16,7 @@ export function configureBackend(config: TelemetryBackend) {
   backend = config;
 }
 
-export function configureFromEnv(env: Record<string, string | undefined>) {
+export function configureFromEnv(env: Record<string, any>) {
   const honeycombKey = env.HONEYCOMB_API_KEY;
   const honeycombDataset = env.HONEYCOMB_DATASET || 'p31-workers';
   const axiomUrl = env.AXIOM_URL;
@@ -97,7 +97,7 @@ async function shipToBackend(payload: Record<string, any>) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Honeycomb-Team': backend.apiKey,
+          'X-Honeycomb-Team': backend.apiKey || '',
         },
         body: JSON.stringify([{
           ...payload,

@@ -27,7 +27,7 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
 
-    const allocator = new CapitalAllocator(env.ALLOCATOR_DB, logger);
+    const allocator = new CapitalAllocator(env.ALLOCATOR_DB, logger, env);
 
     try {
       if (url.pathname === '/metrics' && method === 'GET') {
@@ -162,7 +162,7 @@ export default {
   },
 
   async scheduled(event: ScheduledEvent, env: Env): Promise<void> {
-    const allocator = new CapitalAllocator(env.ALLOCATOR_DB, logger);
+    const allocator = new CapitalAllocator(env.ALLOCATOR_DB, logger, env);
     const span = await startSpan({
       service: 'capital-allocator',
       operation: 'allocator.rebalance',

@@ -82,7 +82,7 @@ export default {
       if (path === '/metrics' && method === 'GET') {
         const totals = await env.REVENUE_DB.prepare(`
           SELECT
-            SUM(CASE WHEN asset = 'USDC' OR source IN ('x402', 'btcpay') THEN CAST(amount_usdc AS REAL) ELSE 0 END) as total_usdc,
+            SUM(CASE WHEN asset = 'USDC' OR source IN ('x402', 'btcpay', 'gumroad') THEN CAST(amount_usdc AS REAL) ELSE 0 END) as total_usdc,
             SUM(CASE WHEN asset = 'EUR' OR source = 'taler' THEN CAST(amount_usdc AS REAL) ELSE 0 END) as total_eur,
             SUM(CASE WHEN asset = 'LOVE' OR source = 'love' THEN CAST(amount_usdc AS REAL) ELSE 0 END) as total_love,
             COUNT(*) as count,

@@ -45,6 +45,9 @@ export default {
         case pathname === '/invoice' && method === 'GET':
           return await createInvoice(new URL(request.url), env, logger);
 
+        case pathname === '/invoices' && method === 'GET':
+          return await listInvoices(new URL(request.url), env, logger);
+
         case pathname === '/stores' && method === 'GET':
           return await listStores(env, logger);
 
@@ -216,7 +219,7 @@ async function handleInvoicePaid(event: Record<string, any>, env: Env, logger: L
 
   await withRetry(() =>
     env.CAPITAL_DB.prepare(
-      `INSERT INTO btcpay_donations
+      `INSERT OR IGNORE INTO btcpay_donations
          (id, invoice_id, store_id, amount, currency, order_id, status, webhook_event, btcpay_data, swept, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`
     ).bind(
@@ -235,18 +238,30 @@ async function handleInvoicePaid(event: Record<string, any>, env: Env, logger: L
 
   if (env.REVENUE_LEDGER_URL && env.MERCHANT_DID) {
     const usdValue = inv.currency === 'BTC' ? (parseFloat(inv.amount) * 50000).toFixed(2) : inv.amount;
+    const ledgerPayload = {
+      source: 'btcpay',
+      payer_did: inv.orderId || inv.id,
+      merchant_did: env.MERCHANT_DID,
+      amount_usdc: usdValue,
+      asset: 'USDC',
+      settlement_tx: inv.id,
+    };
     fetch(`${env.REVENUE_LEDGER_URL}/revenue/record`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'btcpay',
-        payer_did: inv.orderId || inv.id,
-        merchant_did: env.MERCHANT_DID,
-        amount_usdc: usdValue,
-        asset: 'USDC',
-        settlement_tx: inv.id,
-      }),
-    }).catch(() => {});
+      body: JSON.stringify(ledgerPayload),
+    })
+      .then(async (res) => {
+        if (res.ok) {
+          logger.info('Revenue ledger recorded', { invoiceId: inv.id, usdValue, status: res.status });
+        } else {
+          const txt = await res.text().catch(() => '');
+          logger.error('Revenue ledger non-ok', undefined, { invoiceId: inv.id, status: res.status, body: txt.slice(0, 300) });
+        }
+      })
+      .catch((err) => {
+        logger.error('Revenue ledger fetch failed', err, { invoiceId: inv.id });
+      });
   }
 
   await triggerPostDonationFlow(env, logger, { donationId, ...inv });
@@ -328,6 +343,49 @@ async function createInvoice(url: URL, env: Env, logger: Logger): Promise<Respon
 
 // ─── List Stores ─────────────────────────────────────────────────
 
+async function listInvoices(url: URL, env: Env, logger: Logger): Promise<Response> {
+  const storeId = url.searchParams.get('store_id') || env.BTCPAY_STORE_ID;
+  const skip = Number(url.searchParams.get('skip') || 0);
+  const take = Number(url.searchParams.get('take') || 25);
+
+  if (!env.BTCPAY_API_URL || !env.BTCPAY_API_KEY || !storeId) {
+    return respond.ok({ invoices: [] });
+  }
+
+  const endpoint = `${env.BTCPAY_API_URL.replace(/\/$/, '')}/api/v1/stores/${encodeURIComponent(storeId)}/invoices?skip=${skip}&take=${take}`;
+
+  try {
+    const res = await fetch(endpoint, {
+      headers: { 'Authorization': `token ${env.BTCPAY_API_KEY}`, 'Accept': 'application/json' },
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      logger.error('listInvoices failed', undefined, { status: res.status, body: txt.slice(0, 300) });
+      return respond.badRequest(`BTCPay API ${res.status}`);
+    }
+    const list = (await res.json()) as any[];
+
+    const invoices = (list || []).map((inv: any) => ({
+      id: inv.id,
+      amount: inv.amount ?? inv.price,
+      currency: inv.currency,
+      status: inv.status,
+      type: inv.type,
+      checkoutLink: inv.checkoutLink,
+      createdTime: inv.createdTime,
+      expirationTime: inv.expirationTime,
+      orderId: inv.metadata?.orderId ?? null,
+    }));
+
+    return respond.ok({ invoices, count: invoices.length, skip, take });
+  } catch (err: any) {
+    logger.error('listInvoices threw', err);
+    return respond.badRequest('Failed to list invoices');
+  }
+}
+
+// ─── List Stores ─────────────────────────────────────────────────
+
 async function listStores(env: Env, logger: Logger): Promise<Response> {
   if (!env.BTCPAY_API_URL || !env.BTCPAY_API_KEY) {
     return respond.ok({ stores: [] });
@@ -368,7 +426,10 @@ async function listDonations(env: Env, url: URL): Promise<Response> {
   );
 
   const rows      = (result.results || []) as Record<string, any>[];
-  const donations = rows.map((row) => ({ ...row, btcpayData: JSON.parse(row.btcpayData) }));
+  const donations = rows.map((row) => {
+    const raw = typeof row.btcpayData === 'string' ? row.btcpayData : (row.btcpay_data || '{}');
+    return { ...row, btcpayData: JSON.parse(raw) };
+  });
 
   return respond.ok({ donations, count: donations.length, limit, offset });
 }
@@ -430,17 +491,53 @@ async function sweepDonations(env: Env, logger: Logger): Promise<Response> {
     ).bind(now, ...ids).run()
   );
 
+  // BTCPay payout primitive: create a pull payment so the swept BTC can be
+  // claimed via a public URL (BTC-OnChain). Failure is non-blocking — the
+  // sweep already completed; the payout can be re-run manually.
+  let pullPaymentLink: string | null = null;
+  if (env.BTCPAY_API_URL && env.BTCPAY_API_KEY && totalBTC > 0) {
+    try {
+      pullPaymentLink = await createPullPayment(env, totalBTC, logger);
+    } catch (err: any) {
+      logger.error('Pull payment creation failed (non-blocking)', err);
+    }
+  }
+
   if (env.DISCORD_WEBHOOK) {
     notifyDiscord(env, {
       title: '[BANK] BTC Donations Swept to Yield Vault',
-      description: `${donations.length} donation(s) totaling ${totalBTC.toFixed(8)} BTC deposited into yield strategies`,
+      description: `${donations.length} donation(s) totaling ${totalBTC.toFixed(8)} BTC deposited into yield strategies${pullPaymentLink ? `\nPayout: ${pullPaymentLink}` : ''}`,
       color: 0x00D4FF,
     }).catch(() => {});
   }
 
   logger.info('Sweep completed', { count: donations.length, totalBTC });
 
-  return respond.ok({ swept: true, count: donations.length, totalBTC, donationIds: ids, timestamp: now });
+  return respond.ok({ swept: true, count: donations.length, totalBTC, donationIds: ids, timestamp: now, pullPaymentLink });
+}
+
+// ─── Pull Payment (BTCPay payout primitive) ─────────────────────
+
+async function createPullPayment(env: Env, amountBtc: number, logger: Logger): Promise<string> {
+  const storeId = env.BTCPAY_STORE_ID;
+  const endpoint = `${env.BTCPAY_API_URL.replace(/\/$/, '')}/api/v1/stores/${encodeURIComponent(storeId)}/pull-payments`;
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Authorization': `token ${env.BTCPAY_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'P31 Capital Machine sweep',
+      amount: amountBtc.toFixed(8),
+      currency: 'BTC',
+      paymentMethods: ['BTC-OnChain'],
+    }),
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`BTCPay pull-payment ${res.status}: ${txt.slice(0, 200)}`);
+  }
+  const data = (await res.json()) as { link?: string; id?: string };
+  logger.info('Pull payment created', { amountBtc, link: data.link ?? null });
+  return data.link ?? `https://btcpay.p31ca.org/pull-payments/${data.id ?? 'unknown'}`;
 }
 
 // ─── Shared Helpers ──────────────────────────────────────────────
@@ -465,7 +562,7 @@ interface InvoiceFields {
 function extractInvoice(event: Record<string, any>): InvoiceFields {
   const flat = event.Invoice || event.invoice || event;
   return {
-    id:        getField(flat, ['Id', 'id']) || '',
+    id:        getField(flat, ['Id', 'id', 'InvoiceId', 'invoiceId']) || '',
     storeId:   getField(flat, ['StoreId', 'storeId']) || '',
     amount:    String(getField(flat, ['Price', 'price', 'Amount', 'amount']) || '0'),
     currency:  getField(flat, ['Currency', 'currency']) || 'BTC',
