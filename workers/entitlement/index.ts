@@ -2,10 +2,30 @@ import { createLogger } from '../../shared/logger';
 import { startSpan, recordMetric, configureFromEnv } from '../observability/otel';
 import { respond } from '../../shared/response';
 import { EntitlementService } from './service';
+import {
+  getX402,
+  buildRequirements,
+  buildResourceInfo,
+  paymentRequiredResponse,
+  paymentSettlementFailedResponse,
+  parsePaymentPayload,
+  serializeSettleResponse,
+  type X402Env,
+  type PaymentRequiredBody,
+  type PaymentPayload,
+  type SettleResponse,
+} from './x402';
 
 export interface Env {
   ENTITLEMENT_DB: D1Database;
   ENVIRONMENT: string;
+  X402_FACILITATOR?: string;
+  X402_NETWORK?: string;
+  X402_PAY_TO?: string;
+  X402_ASSET?: string;
+  X402_SELF_HOSTED_URL?: string;
+  CDP_API_KEY_ID?: string;
+  CDP_API_KEY_SECRET?: string;
 }
 
 export interface CheckRequest {
@@ -34,7 +54,8 @@ export interface LoveIssueRequest {
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-PAYMENT',
+  'Access-Control-Expose-Headers': 'X-PAYMENT-RESPONSE',
 };
 
 export default {
@@ -96,6 +117,76 @@ export default {
 
       if (path.startsWith('/entitlement/') && method === 'GET') {
         const did = decodeURIComponent(path.replace('/entitlement/', ''));
+
+        const x402 = await getX402(env, (msg) => logger.info(msg, {}));
+
+        const paymentHeader = request.headers.get('X-PAYMENT');
+
+        if (!paymentHeader) {
+          const requirement = await buildRequirements(x402);
+          const resourceInfo = buildResourceInfo(request.url, did);
+          const pr = await x402.server.createPaymentRequiredResponse([requirement], resourceInfo, 'Payment required');
+          logger.info('x402 paywall: issued 402', {
+            did,
+            network: x402.network,
+            asset: requirement.asset,
+            amount: requirement.amount,
+            facilitator: x402.mode,
+          });
+          return paymentRequiredResponse(pr as PaymentRequiredBody);
+        }
+
+        let paymentPayload: PaymentPayload;
+        try {
+          paymentPayload = parsePaymentPayload(paymentHeader);
+        } catch {
+          const requirement = await buildRequirements(x402);
+          const resourceInfo = buildResourceInfo(request.url, did);
+          const pr = await x402.server.createPaymentRequiredResponse(
+            [requirement],
+            resourceInfo,
+            'Invalid X-PAYMENT payload (must be base64 JSON)'
+          );
+          return paymentRequiredResponse(pr as PaymentRequiredBody);
+        }
+
+        const requirement = await buildRequirements(x402);
+        const matched = x402.server.findMatchingRequirements([requirement], paymentPayload);
+
+        if (!matched) {
+          const resourceInfo = buildResourceInfo(request.url, did);
+          const pr = await x402.server.createPaymentRequiredResponse(
+            [requirement],
+            resourceInfo,
+            'Payment does not match any accepted requirement'
+          );
+          return paymentRequiredResponse(pr as PaymentRequiredBody);
+        }
+
+        let verifyResult;
+        try {
+          verifyResult = await x402.server.verifyPayment(paymentPayload, matched);
+        } catch (error: any) {
+          logger.error('x402 verify raised', error, { did, network: x402.network });
+          const resourceInfo = buildResourceInfo(request.url, did);
+          const pr = await x402.server.createPaymentRequiredResponse(
+            [requirement],
+            resourceInfo,
+            `Payment verification unavailable: ${error?.message || String(error)}`
+          );
+          return paymentRequiredResponse(pr as PaymentRequiredBody);
+        }
+
+        if (!verifyResult.isValid) {
+          const resourceInfo = buildResourceInfo(request.url, did);
+          const pr = await x402.server.createPaymentRequiredResponse(
+            [requirement],
+            resourceInfo,
+            `Payment verification failed: ${verifyResult.invalidReason || verifyResult.invalidMessage || 'invalid'}`
+          );
+          return paymentRequiredResponse(pr as PaymentRequiredBody);
+        }
+
         const entitlement = await service.getEntitlement(did);
 
         if (!entitlement) {
@@ -106,12 +197,39 @@ export default {
         const monthlyRemaining = service['subtractStrings'](tierLimits.monthly_allowance_usdc, entitlement.monthly_used_usdc);
         const usage = await service.getUsage(did, 'all');
 
-        return respond.ok({
+        const responseBody = {
           balance_usdc: entitlement.balance_usdc,
           balance_love: entitlement.balance_love,
           tier: entitlement.tier,
           monthly_remaining: monthlyRemaining,
           usage,
+        };
+
+        let settleResponse: SettleResponse;
+        try {
+          settleResponse = (await x402.server.settlePayment(paymentPayload, matched)) as SettleResponse;
+        } catch (error: any) {
+          logger.error('x402 settlement failed after handler ran', error, { did, network: x402.network });
+          recordMetric('entitlement.x402_settle_failure', 1, { did, facilitator: x402.mode });
+          return paymentSettlementFailedResponse(error?.message || String(error));
+        }
+
+        if (!settleResponse.success) {
+          logger.error('x402 settlement reported failure after handler ran', undefined, { did, settle: settleResponse });
+          recordMetric('entitlement.x402_settle_failure', 1, { did, facilitator: x402.mode });
+          return paymentSettlementFailedResponse(settleResponse.errorReason || settleResponse.errorMessage || 'settle failed');
+        }
+
+        recordMetric('entitlement.x402_paid', 1, { did, facilitator: x402.mode, payer: settleResponse.payer || 'unknown' });
+
+        return new Response(JSON.stringify({ success: true, data: responseBody, timestamp: Date.now() }), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-PAYMENT-RESPONSE': serializeSettleResponse(settleResponse),
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Expose-Headers': 'X-PAYMENT-RESPONSE',
+          },
         });
       }
 

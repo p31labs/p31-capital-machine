@@ -17,3 +17,15 @@ enabled = true
 [vars]
 HONEYCOMB_API_KEY = ""  # set via wrangler secret put HONEYCOMB_API_KEY
 HONEYCOMB_DATASET = "p31-entitlement"
+
+# WS-1 x402 paywall — first deploy: Mogami facilitator on Base Sepolia (no real money).
+# X402_FACILITATOR: cdp | mogami | self | auto
+X402_FACILITATOR = "mogami"
+X402_NETWORK = "eip155:84532"
+X402_PAY_TO = "0x51c285Df171C76bE36252e32679F098d90768413"
+X402_ASSET = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"  # Base Sepolia USDC
+X402_SELF_HOSTED_URL = ""  # used only when X402_FACILITATOR=self
+
+# Secrets (wrangler secret put, never in code):
+#   CDP_API_KEY_ID, CDP_API_KEY_SECRET  — required only when X402_FACILITATOR=cdp
+#   X402_SELF_HOSTED_URL                 — required only when X402_FACILITATOR=self
