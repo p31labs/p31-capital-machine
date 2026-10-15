@@ -8,6 +8,8 @@
     "deploy": "bash infra/deploy.sh all production",
     "deploy:staging": "bash infra/deploy.sh all staging",
     "deploy:module": "bash infra/deploy.sh",
+    "deploy:live": "bash scripts/deploy-live.sh",
+    "push": "bash scripts/push.sh",
     "secrets": "bash infra/setup-secrets.sh",
     "backup:d1": "node scripts/backup-d1.mjs",
     "check:d1": "node scripts/verify-d1.mjs",
