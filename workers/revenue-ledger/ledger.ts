@@ -214,11 +214,12 @@ export class RevenueLedger {
       SELECT 
         SUM(CAST(amount_usdc AS REAL)) as total_usdc,
         COUNT(*) as count,
-        source
+        source,
+        asset
       FROM revenue_events
       ${whereClause}
-      GROUP BY source
-    `).bind(...params).all<{ total_usdc: number | null; count: number; source: string }>();
+      GROUP BY source, asset
+    `).bind(...params).all<{ total_usdc: number | null; count: number; source: string; asset: string }>();
 
     const results = totals.results || [];
 
@@ -230,29 +231,29 @@ export class RevenueLedger {
     const source_breakdown: Record<string, { count: number; total_usdc: string }> = {};
 
     for (const row of results) {
-      const amount = row.total_usdc || 0;
+      const amount = Number(row.total_usdc || 0);
       count += row.count;
-      const isUsdc = row.source === 'USDC' || row.source === 'x402' || row.source === 'btcpay' || row.source === 'gumroad';
-      total_usdc += isUsdc ? amount : 0;
-      total_eur += row.source === 'taler' ? amount : 0;
-      total_love += row.source === 'love' ? amount : 0;
-      total_x402 += row.source === 'x402' ? amount : 0;
+      const asset = (row.asset || 'USDC').toUpperCase();
+      if (asset === 'USDC') total_usdc += amount;
+      if (asset === 'EUR') total_eur += amount;
+      if (asset === 'LOVE') total_love += amount;
+      if (asset === 'USDC' && row.source === 'x402') total_x402 += amount;
 
+      const prev = source_breakdown[row.source] ?? { count: 0, total_usdc: 0 };
       source_breakdown[row.source] = {
-        count: row.count,
-        total_usdc: String(amount),
+        count: prev.count + row.count,
+        total_usdc: String(asset === 'USDC' ? prev.total_usdc + amount : prev.total_usdc),
       };
     }
 
     const avg = count > 0 ? total_usdc / count : 0;
 
     return {
-      // total_usdc already includes x402 (see accumulation above: source in
-      // 'USDC' | 'x402' | 'btcpay'), so DO NOT add total_x402 again — adding it
-      // double-counts x402 revenue and contradicts /metrics. This must equal the
-      // /metrics revenue_total_usdc value (gumroad + x402 + btcpay).
-      // LOVE is tracked separately as a non-revenue care-credit source
-      // (total_love); it is deliberately NOT netted into total_usdc.
+      // Totals and the source breakdown share one accumulation rule (the asset
+      // column), so sum(source_breakdown[*].total_usdc) === total_usdc. x402 is
+      // counted once via its USDC asset, matching /metrics revenue_total_usdc.
+      // LOVE is a non-revenue care-credit source tracked in total_love and
+      // never netted into total_usdc.
       total_usdc: String(total_usdc),
       total_eur: String(total_eur),
       total_love: String(total_love),

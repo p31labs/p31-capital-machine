@@ -1,34 +1,38 @@
 #!/bin/bash
 set -e
 
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
 echo "=== P31 Monetization Engine — Production Deployment ==="
 echo ""
 
 # Phase 1: Revenue Ledger
 echo ">>> Phase 1: Deploying Revenue Ledger..."
-cd /home/p31/p31-capital-machine/infra
-wrangler deploy --config wrangler.revenue-ledger.toml
+(cd "$ROOT/workers/revenue-ledger" && wrangler deploy)
 echo "✓ Revenue Ledger deployed"
 echo ""
 
 # Phase 2: Entitlement Service
 echo ">>> Phase 2: Deploying Entitlement Service..."
-cd /home/p31/p31-capital-machine/workers/entitlement
-wrangler deploy
+(cd "$ROOT/workers/entitlement" && wrangler deploy)
 echo "✓ Entitlement Service deployed"
 echo ""
 
 # Phase 3: Capital Allocator
 echo ">>> Phase 3: Deploying Capital Allocator..."
-cd /home/p31/p31-capital-machine/workers/capital-allocator
-wrangler deploy
+(cd "$ROOT/workers/capital-allocator" && wrangler deploy)
 echo "✓ Capital Allocator deployed"
 echo ""
 
-# Phase 4: Monetization Dashboard
-echo ">>> Phase 4: Building Monetization Dashboard..."
-cd /home/p31/p31-capital-machine/apps/monetization-dashboard
-npm run build
+# Phase 4: BTCPay Gateway
+echo ">>> Phase 4: Deploying BTCPay Gateway..."
+(cd "$ROOT/workers/btcpay-gateway" && wrangler deploy)
+echo "✓ BTCPay Gateway deployed"
+echo ""
+
+# Phase 5: Monetization Dashboard
+echo ">>> Phase 5: Building Monetization Dashboard..."
+(cd "$ROOT/apps/monetization-dashboard" && npm run build)
 echo "✓ Dashboard built (deploy to Cloudflare Pages manually or via CI)"
 echo ""
 

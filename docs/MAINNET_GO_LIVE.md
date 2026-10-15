@@ -92,7 +92,7 @@ If critical issues arise:
 
 ### Option 1: Disable Payments (Fast)
 ```bash
-cd /home/p31/P31-local-workspace/workers/mcp-x402-gateway
+cd /home/p31/production/workers/mcp-x402-gateway
 # Remove FACILITATOR_KEY_ID and FACILITATOR_SECRET_KEY secrets
 wrangler secret delete FACILITATOR_KEY_ID
 wrangler secret delete FACILITATOR_SECRET_KEY

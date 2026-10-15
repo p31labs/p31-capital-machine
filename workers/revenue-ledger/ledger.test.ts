@@ -43,6 +43,26 @@ class MockD1Statement {
     if (/SELECT id, hash, prev_hash FROM revenue_events/i.test(this.sql)) {
       return { results: store.map(r => ({ id: r.id, hash: r.hash, prev_hash: r.prev_hash })) };
     }
+    // Revenue summary: SUM(amount_usdc)/COUNT grouped by source+asset, honoring
+    // the created_at cutoff bound in the query (mirrors the real SQL).
+    if (/SUM\(CAST\(amount_usdc AS REAL\)\) as total_usdc/i.test(this.sql)) {
+      const cutoff = typeof this.bindArgs[this.bindArgs.length - 1] === 'number' ? this.bindArgs[this.bindArgs.length - 1] : 0;
+      const rows = store.filter(r => r.created_at >= cutoff);
+      const groups = new Map<string, { total: number; count: number }>();
+      for (const r of rows) {
+        const key = `${r.source}\u0000${r.asset}`;
+        const g = groups.get(key) ?? { total: 0, count: 0 };
+        g.total += Number(r.amount_usdc) || 0;
+        g.count += 1;
+        groups.set(key, g);
+      }
+      return {
+        results: Array.from(groups, ([key, g]) => {
+          const sep = key.indexOf('\u0000');
+          return { total_usdc: g.total, count: g.count, source: key.slice(0, sep), asset: key.slice(sep + 1) };
+        }),
+      };
+    }
     return { results: [] };
   }
 
@@ -246,5 +266,20 @@ describe('RevenueLedger', () => {
     const verification = await ledger.verifyHashChain();
     expect(verification.valid).toBe(true);
     expect(verification.total_entries).toBe(2);
+  });
+
+  it('should reconcile summary totals with source breakdown', async () => {
+    await ledger.recordRevenue({ source: 'x402', payer_did: 'did:key:r1', merchant_did: 'did:key:m', amount_usdc: '10.00', asset: 'USDC' });
+    await ledger.recordRevenue({ source: 'depin/honeygain', payer_did: 'did:key:r2', merchant_did: 'did:key:m', amount_usdc: '4.75', asset: 'USDC' });
+    await ledger.recordRevenue({ source: 'taler', payer_did: 'did:key:r3', merchant_did: 'did:key:m', amount_usdc: '5.00', asset: 'EUR' });
+    await ledger.recordRevenue({ source: 'love', payer_did: 'did:key:r4', merchant_did: 'did:key:m', amount_usdc: '100.00', asset: 'LOVE' });
+
+    const summary = await ledger.getRevenueSummary(null, '30d');
+    const breakdownTotal = Object.values(summary.source_breakdown).reduce((sum, s) => sum + Number(s.total_usdc), 0);
+    expect(breakdownTotal).toBeCloseTo(Number(summary.total_usdc), 2);
+    expect(summary.total_usdc).toBe('14.75');
+    expect(summary.total_eur).toBe('5');
+    expect(summary.total_love).toBe('100');
+    expect(summary.count).toBe(4);
   });
 });

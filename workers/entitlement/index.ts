@@ -26,6 +26,8 @@ export interface Env {
   X402_SELF_HOSTED_URL?: string;
   CDP_API_KEY_ID?: string;
   CDP_API_KEY_SECRET?: string;
+  /** CORS allowlist (comma-separated origins). Unset = legacy wildcard. */
+  ALLOWED_ORIGINS?: string;
 }
 
 export interface CheckRequest {
@@ -51,12 +53,22 @@ export interface LoveIssueRequest {
   amount: string;
 }
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-PAYMENT',
-  'Access-Control-Expose-Headers': 'X-PAYMENT-RESPONSE',
-};
+function corsHeaders(request: Request, env: Env): Record<string, string> {
+  const origin = request.headers.get('Origin');
+  const allowed = (env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const base = {
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-PAYMENT',
+    'Access-Control-Expose-Headers': 'X-PAYMENT-RESPONSE',
+  };
+  if (allowed.length > 0) {
+    if (origin && allowed.includes(origin)) {
+      return { 'Access-Control-Allow-Origin': origin, 'Vary': 'Origin', ...base };
+    }
+    return {};
+  }
+  return { 'Access-Control-Allow-Origin': '*', ...base };
+}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -66,7 +78,7 @@ export default {
     const method = request.method;
 
     if (method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
+      return new Response(null, { headers: corsHeaders(request, env) });
     }
 
     const logger = createLogger('entitlement', env.ENVIRONMENT);
@@ -81,7 +93,7 @@ export default {
             timestamp: Date.now(),
           }),
           {
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
           }
         );
       }
@@ -111,7 +123,7 @@ export default {
           monthly_allowance_used_pct,
           last_reset: lastReset,
         }), {
-          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
         });
       }
 
@@ -227,8 +239,7 @@ export default {
           headers: {
             'Content-Type': 'application/json',
             'X-PAYMENT-RESPONSE': serializeSettleResponse(settleResponse),
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Expose-Headers': 'X-PAYMENT-RESPONSE',
+            ...corsHeaders(request, env),
           },
         });
       }
@@ -251,7 +262,7 @@ export default {
           if (!result.ok) {
             return new Response(JSON.stringify(result), {
               status: 402,
-              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+              headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
             });
           }
           return respond.ok(result);
@@ -341,7 +352,7 @@ export default {
         }),
         {
           status: 404,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
         }
       );
     } catch (error: any) {
@@ -353,7 +364,7 @@ export default {
         }),
         {
           status: 500,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
         }
       );
     }

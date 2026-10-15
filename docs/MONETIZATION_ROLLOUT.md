@@ -13,7 +13,7 @@ This document outlines the 5-phase rollout of the P31 Unified Monetization Engin
 **Goal:** Stand up the revenue-ledger service and begin capturing all payment events from existing sources (x402, Taler, Gumroad, BTCPay, LOVE) without disrupting any existing workflows.
 
 **Steps:**
-1. Deploy `revenue-ledger` worker to Cloudflare using `wrangler deploy --config wrangler.revenue-ledger.toml`.
+1. Deploy `revenue-ledger` worker to Cloudflare using `wrangler deploy` from `workers/revenue-ledger/` (per-worker `wrangler.toml`).
 2. Run D1 migrations to create `revenue_events` table and indexes.
 3. Update payment sources (x402-gateway, taler-worker, etc.) to POST revenue events to `/revenue/record` in addition to their existing logic.
 4. Verify revenue flows appear in the ledger via `/revenue/summary`.

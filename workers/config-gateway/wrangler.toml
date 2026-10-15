@@ -13,7 +13,7 @@ binding = "CONFIG_KV"
 id = "27d140bd3918419dae63de50e2f94924"
 
 [vars]
-ALLOWED_ORIGINS = "*"
+ALLOWED_ORIGINS = "https://p31-monetization.trimtab-signal.workers.dev,https://monetization.p31ca.org,https://p31ca.org,https://www.p31ca.org,http://localhost:5173,http://localhost:4173,capacitor://localhost"
 
 [observability]
 enabled = true

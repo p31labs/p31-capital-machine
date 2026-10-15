@@ -1,20 +1,21 @@
 #!/bin/bash
 set -e
 
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
 echo "=== Phase 1: Revenue Ledger ==="
-cd /home/p31/p31-capital-machine/infra
-wrangler deploy --config wrangler.revenue-ledger.toml
+(cd "$ROOT/workers/revenue-ledger" && wrangler deploy)
 
 echo "=== Phase 2: Entitlement Service ==="
-cd /home/p31/p31-capital-machine/workers/entitlement
-wrangler deploy
+(cd "$ROOT/workers/entitlement" && wrangler deploy)
 
 echo "=== Phase 3: Capital Allocator ==="
-cd /home/p31/p31-capital-machine/workers/capital-allocator
-wrangler deploy
+(cd "$ROOT/workers/capital-allocator" && wrangler deploy)
 
-echo "=== Phase 4: Monetization Dashboard ==="
-cd /home/p31/p31-capital-machine/apps/monetization-dashboard
-npm run build
+echo "=== Phase 4: BTCPay Gateway ==="
+(cd "$ROOT/workers/btcpay-gateway" && wrangler deploy)
+
+echo "=== Phase 5: Monetization Dashboard ==="
+(cd "$ROOT/apps/monetization-dashboard" && npm run build)
 
 echo "=== Deployment Complete ==="

@@ -5,8 +5,8 @@ Unified append-only sink for all P31 payment sources. SHA-256 chained for court-
 ## Deployment
 
 ```bash
-cd /home/p31/p31-capital-machine/infra
-wrangler deploy --config wrangler.revenue-ledger.toml
+cd /home/p31/production/p31-capital-machine/workers/revenue-ledger
+wrangler deploy
 ```
 
 ## Schema

@@ -4,6 +4,8 @@ set -e
 echo "=== Submitting P31 MCP Servers to Glama ==="
 echo ""
 
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
 SERVERS=(
   "spaceship-earth.json:p31-spaceship"
   "crypto-mcp.json:p31-crypto"
@@ -15,7 +17,7 @@ for mapping in "${SERVERS[@]}"; do
   name="${mapping#*:}"
   echo ">>> Submitting $name..."
   
-  payload=$(cat "/home/p31/p31-capital-machine/observability/glama-submissions/$file")
+  payload=$(cat "$ROOT/observability/glama-submissions/$file")
   
   # Glama API endpoint (update if actual endpoint differs)
   response=$(curl -s -X POST "https://glama.ai/api/mcp/servers" \

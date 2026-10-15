@@ -10,3 +10,6 @@ database_id = "1f219ab8-0fd0-473e-b260-5492f2c1f415"
 
 [observability]
 enabled = true
+
+[vars]
+ALLOWED_ORIGINS = "https://p31-monetization.trimtab-signal.workers.dev,https://monetization.p31ca.org,https://p31ca.org,https://www.p31ca.org,http://localhost:5173,http://localhost:4173,capacitor://localhost"

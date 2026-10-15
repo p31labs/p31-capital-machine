@@ -80,7 +80,7 @@ Expected: `monthly_used_usdc` increased by `0.05`
 To move from testnet to mainnet:
 
 ```bash
-cd /home/p31/P31-local-workspace/workers/mcp-x402-gateway
+cd /home/p31/production/workers/mcp-x402-gateway
 wrangler secret put FACILITATOR_KEY_ID
 wrangler secret put FACILITATOR_SECRET_KEY
 ```

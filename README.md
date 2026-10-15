@@ -12,7 +12,7 @@ A SHA-256 chained, DID-based, cross-rail ledger with entitlement gating, capital
 | **Entitlement Service** | https://entitlement.trimtab-signal.workers.dev | ✅ Live |
 | **Capital Allocator** | https://capital-allocator.trimtab-signal.workers.dev | ✅ Live |
 | **Alerting** | https://monetization-alerting.trimtab-signal.workers.dev | ✅ Live |
-| **Dashboard** | https://af79c8f3.chump-dashboard.pages.dev | ✅ Live |
+| **Dashboard** | `p31-monetization.trimtab-signal.workers.dev` — ✅ 200 (verified 2026-10-14). Legacy `af79c8f3.chump-dashboard.pages.dev` is dead (000) | ✅ Live |
 
 ## Honest Status: Revenue Workers
 
@@ -22,7 +22,7 @@ A SHA-256 chained, DID-based, cross-rail ledger with entitlement gating, capital
 |--------|--------|--------------------|
 | **yield-vault** | ✅ Deployed | Real on-chain APY aggregation (~11.75% weighted). Requires capital to deploy value. |
 | **mev-arbitrage** | ✅ Deployed | Jupiter Swap API v1 → Jito bundle path wired + signed end-to-end. **Requires funded SOL wallet**; mainnet-only. MEV margins declining industry-wide. |
-| **btcpay-gateway** | ✅ Deployed | **Live at** `https://btcpay-gateway.trimtab-signal.workers.dev`. BTCPay server verified running on this host (`127.0.0.1:8082`). Needs 4 secrets wired (`BTCPAY_API_KEY`, `BTCPAY_API_URL`, `BTCPAY_WEBHOOK_SECRET`, `BTCPAY_STORE_ID`) to process real invoices. D1 binding fixed to `93485b8c-...`. |
+| **btcpay-gateway** | ✅ Deployed | **Live at** `https://btcpay-gateway.trimtab-signal.workers.dev`. BTCPay server verified running on this host (`127.0.0.1:8082`). Needs 4 secrets wired (`BTCPAY_API_KEY`, `BTCPAY_API_URL`, `BTCPAY_WEBHOOK_SECRET`, `BTCPAY_STORE_ID`) to process real invoices. D1 binding fixed to `fd439548-...` (capital-db). |
 | **affiliate-fleet** | 🧩 Partial | Real Twitter leg; needs Twitter dev app + registered IDs. Discord leg is a stub. |
 | **data-monetization** | 🧩 Partial | Real API layer, but no data pipeline populates it yet. |
 | **cashback-collector** | 🪧 **STUB** | Hits `api.pump.fun|api.jup.ag|api.1inch.io|api.odos.xyz/cashback` — **these endpoints do not exist.** Not deployable as-is. |
@@ -131,7 +131,7 @@ bash scripts/deploy-production.sh
 
 ## Dashboard
 
-Access the unified dashboard at: https://af79c8f3.chump-dashboard.pages.dev
+Access the unified dashboard at: **`p31-monetization.trimtab-signal.workers.dev`** (verified 200, 2026-10-14). The legacy `af79c8f3.chump-dashboard.pages.dev` domain is dead (000) — redeploy from `apps/monetization-dashboard` only if the new shell is insufficient.
 
 Sections:
 - **Revenue**: Time-series by source, summary cards, source breakdown
@@ -159,9 +159,10 @@ Sections:
 
 | Database | ID | Purpose |
 |----------|----|---------|
-| `revenue-ledger-db` | `d5d1817c-...` | SHA-256 chained revenue events |
-| `entitlement-db` | `9b00fb88-...` | User entitlements + usage metering |
-| `allocator-db` | `c2e667c0-...` | Capital allocations + results |
+| `revenue-db` | `1f219ab8-...` | SHA-256 chained revenue events |
+| `entitlement-db` | `e9e18c25-...` | User entitlements + usage metering |
+| `allocator-db` | `d12543b9-...` | Capital allocations + results |
+| `capital-db` | `fd439548-...` | Shared capital-machine state (yield/mev/btcpay/compounder) |
 
 ## Testing
 

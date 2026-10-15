@@ -4,7 +4,7 @@ set -e
 echo "=== Deploying Monetization Dashboard ==="
 echo ""
 
-DASHBOARD_DIR="/home/p31/p31-capital-machine/apps/monetization-dashboard"
+DASHBOARD_DIR="$(cd "$(dirname "$0")/.." && pwd)/apps/monetization-dashboard"
 PROJECT_NAME="monetization-dashboard"
 
 cd "$DASHBOARD_DIR"

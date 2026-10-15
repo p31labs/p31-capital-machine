@@ -7,13 +7,25 @@ export interface Env {
   ALLOCATOR_DB: D1Database;
   REVENUE_LEDGER_URL: string;
   ENVIRONMENT: string;
+  /** CORS allowlist (comma-separated origins). Unset = legacy wildcard. */
+  ALLOWED_ORIGINS?: string;
 }
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
+function corsHeaders(request: Request, env: Env): Record<string, string> {
+  const origin = request.headers.get('Origin');
+  const allowed = (env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const base = {
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  };
+  if (allowed.length > 0) {
+    if (origin && allowed.includes(origin)) {
+      return { 'Access-Control-Allow-Origin': origin, 'Vary': 'Origin', ...base };
+    }
+    return {};
+  }
+  return { 'Access-Control-Allow-Origin': '*', ...base };
+}
 
 const logger = createLogger('capital-allocator');
 
@@ -24,7 +36,7 @@ export default {
     const method = request.method;
 
     if (method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
+      return new Response(null, { headers: corsHeaders(request, env) });
     }
 
     const allocator = new CapitalAllocator(env.ALLOCATOR_DB, logger, env);
@@ -52,7 +64,7 @@ export default {
           pending_allocations: pendingResult?.count || 0,
           last_rebalance: lastRebalanceResult?.last_rebalance ? new Date(lastRebalanceResult.last_rebalance).toISOString() : new Date().toISOString(),
         }), {
-          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
         });
       }
 
@@ -67,7 +79,7 @@ export default {
           const allocations = await allocator.allocate(body);
           recordMetric('allocator.allocate', allocations.length, { source_tx_id: body.source_tx_id });
           return new Response(JSON.stringify({ allocations }), {
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
           });
         } finally {
           span.end();
@@ -91,7 +103,7 @@ export default {
             last_rebalance: a.next_rebalance_at ? new Date(a.next_rebalance_at).toISOString() : '',
           }));
           return new Response(JSON.stringify({ allocations }), {
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
           });
         } finally {
           span.end();
@@ -103,7 +115,7 @@ export default {
         if (!target) {
           return new Response(JSON.stringify({ error: 'target query param required' }), {
             status: 400,
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
           });
         }
         const span = await startSpan({
@@ -114,7 +126,7 @@ export default {
         try {
           const status = await allocator.getStatus(target);
           return new Response(JSON.stringify(status), {
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
           });
         } finally {
           span.end();
@@ -125,7 +137,7 @@ export default {
         const range = url.searchParams.get('range') || '30d';
         const roi = await allocator.getRoi(range);
         return new Response(JSON.stringify(roi), {
-          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
         });
       }
 
@@ -138,7 +150,7 @@ export default {
           const result = await allocator.rebalance();
           recordMetric('allocator.rebalance', result.moves.length, {});
           return new Response(JSON.stringify(result), {
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
           });
         } finally {
           span.end();
@@ -147,7 +159,7 @@ export default {
 
       if (url.pathname === '/health') {
         return new Response(JSON.stringify({ status: 'ok', timestamp: Date.now() }), {
-          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
         });
       }
 
@@ -156,7 +168,7 @@ export default {
       logger.error('Request failed', error);
       return new Response(JSON.stringify({ error: error.message }), {
         status: 500,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
       });
     }
   },

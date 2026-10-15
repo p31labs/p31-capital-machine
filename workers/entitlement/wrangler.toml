@@ -25,6 +25,7 @@ X402_NETWORK = "eip155:84532"
 X402_PAY_TO = "0x51c285Df171C76bE36252e32679F098d90768413"
 X402_ASSET = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"  # Base Sepolia USDC
 X402_SELF_HOSTED_URL = ""  # used only when X402_FACILITATOR=self
+ALLOWED_ORIGINS = "https://p31-monetization.trimtab-signal.workers.dev,https://monetization.p31ca.org,https://p31ca.org,https://www.p31ca.org,http://localhost:5173,http://localhost:4173,capacitor://localhost"
 
 # Secrets (wrangler secret put, never in code):
 #   CDP_API_KEY_ID, CDP_API_KEY_SECRET  — required only when X402_FACILITATOR=cdp

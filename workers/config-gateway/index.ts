@@ -18,13 +18,25 @@ type ValidatorResult = { ok: boolean; message?: string };
 const RPC_CATEGORIES = ['rpc'] as const;
 const VAULT_CATEGORIES = ['vault', 'strategy'] as const;
 
-const corsHeaders = (env: Env): Record<string, string> => {
-  const allowed = env.ALLOWED_ORIGINS || '*';
+const corsHeaders = (request: Request, env: Env): Record<string, string> => {
+  const origin = request.headers.get('Origin');
+  const allowed = (env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (allowed.length > 0) {
+    if (origin && allowed.includes(origin)) {
+      return {
+        'Access-Control-Allow-Origin': origin,
+        'Access-Control-Allow-Methods': 'GET, PUT, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Credentials': 'true',
+        'Vary': 'Origin',
+      };
+    }
+    return {};
+  }
   return {
-    'Access-Control-Allow-Origin': allowed,
+    'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, PUT, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Credentials': 'true',
   };
 };
 
@@ -99,7 +111,7 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
-    const cors = corsHeaders(env);
+    const cors = corsHeaders(request, env);
 
     if (method === 'OPTIONS') {
       return new Response(null, { headers: cors });

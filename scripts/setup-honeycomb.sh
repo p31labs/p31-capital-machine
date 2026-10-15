@@ -5,12 +5,12 @@ echo "=== Honeycomb Observability Setup ==="
 echo ""
 
 WORKERS=(
-  "infra/wrangler.revenue-ledger.toml:p31-revenue-ledger"
+  "workers/revenue-ledger/wrangler.toml:p31-revenue-ledger"
   "workers/entitlement/wrangler.toml:p31-entitlement"
   "workers/capital-allocator/wrangler.toml:p31-capital-allocator"
 )
 
-BASE_DIR="/home/p31/p31-capital-machine"
+BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 for mapping in "${WORKERS[@]}"; do
   config="${mapping%:*}"

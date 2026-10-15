@@ -9,6 +9,8 @@ export interface Env {
   GUMLOCK_PRODUCT_IDS?: string;
   GUMLOCK_PRODUCTS?: string;
   GUMLOCK_MERCHANT?: string;
+  /** CORS allowlist (comma-separated origins). Unset = legacy wildcard. */
+  ALLOWED_ORIGINS?: string;
 }
 
 const GUMLOCK_MERCHANT_DEFAULT = 'gumroad:willow680';
@@ -19,7 +21,7 @@ function parseList(raw: string | undefined): string[] {
 }
 
 export interface RecordRevenueRequest {
-  source: 'x402' | 'taler' | 'gumroad' | 'btcpay' | 'love' | 'arcade';
+  source: 'x402' | 'taler' | 'gumroad' | 'btcpay' | 'love' | 'arcade' | 'depin/honeygain' | 'depin/storj' | 't/a' | 'test' | 'x402/demo-test';
   payer_did: string;
   merchant_did: string;
   amount_usdc: string;
@@ -48,11 +50,26 @@ export interface BalanceResult {
   transaction_count: number;
 }
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+function corsHeaders(request: Request, env: Env): Record<string, string> {
+  const origin = request.headers.get('Origin');
+  const allowed = parseList(env.ALLOWED_ORIGINS);
+  if (allowed.length > 0) {
+    if (origin && allowed.includes(origin)) {
+      return {
+        'Access-Control-Allow-Origin': origin,
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Vary': 'Origin',
+      };
+    }
+    return {};
+  }
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  };
+}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -62,7 +79,7 @@ export default {
     const method = request.method;
 
     if (method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
+      return new Response(null, { headers: corsHeaders(request, env) });
     }
 
     const logger = createLogger('revenue-ledger', env.ENVIRONMENT);
@@ -76,7 +93,7 @@ export default {
           status: 'ok',
           service: 'revenue-ledger',
           timestamp: Date.now(),
-        }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+        }), { headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) } });
       }
 
       if (path === '/metrics' && method === 'GET') {
@@ -100,12 +117,26 @@ export default {
           hash_chain_valid: verification.valid,
           last_updated: totals?.last_updated ? new Date(totals.last_updated).toISOString() : new Date().toISOString(),
         }), {
-          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
         });
       }
 
       if (path === '/revenue/record' && method === 'POST') {
         const body = await request.json() as RecordRevenueRequest;
+        const VALID_SOURCES = new Set(['x402', 'taler', 'gumroad', 'btcpay', 'love', 'arcade', 'depin/honeygain', 'depin/storj', 't/a', 'test', 'x402/demo-test']);
+        const VALID_ASSETS = new Set(['USDC', 'EUR', 'LOVE']);
+        if (!VALID_SOURCES.has(body.source)) {
+          return new Response(JSON.stringify({ error: `unknown revenue source: ${body.source}` }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
+          });
+        }
+        if (!VALID_ASSETS.has(body.asset)) {
+          return new Response(JSON.stringify({ error: `unknown asset: ${body.asset}` }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
+          });
+        }
         const span = await startSpan({
           service: 'revenue-ledger',
           operation: 'revenue.record',
@@ -115,7 +146,7 @@ export default {
           const result = await ledger.recordRevenue(body);
           await audit.logEvent('revenue_recorded', { id: result.id, source: body.source });
           return new Response(JSON.stringify(result), {
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
           });
         } finally {
           span.end();
@@ -133,7 +164,7 @@ export default {
         try {
           const summary = await ledger.getRevenueSummary(source, range);
           return new Response(JSON.stringify(summary), {
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
           });
         } finally {
           span.end();
@@ -152,11 +183,11 @@ export default {
           if (!balance) {
             return new Response(JSON.stringify({ error: 'DID not found' }), {
               status: 404,
-              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+              headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
             });
           }
           return new Response(JSON.stringify(balance), {
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
           });
         } finally {
           span.end();
@@ -174,7 +205,7 @@ export default {
         try {
           const { entries } = await ledger.getLedgerEntries(limit, offset, null);
           return new Response(JSON.stringify({ entries }), {
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
           });
         } finally {
           span.end();
@@ -202,7 +233,7 @@ export default {
           metadata: { amount: body.amount_usdc },
         });
         return new Response(JSON.stringify({ received: true, settlement }), {
-          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
         });
       }
 
@@ -227,13 +258,13 @@ export default {
         if (!saleId) {
           return new Response(JSON.stringify({ error: 'missing sale_id' }), {
             status: 400,
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
           });
         }
 
         if (resourceName !== 'sale') {
           return new Response(JSON.stringify({ received: true, resource_name: resourceName, recorded: false }), {
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
           });
         }
 
@@ -244,14 +275,14 @@ export default {
         if (allowlistConfigured && !allowed) {
           return new Response(JSON.stringify({ error: 'product not in allowlist', product_id: productId, permalink }), {
             status: 403,
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
           });
         }
 
         if (!allowlistConfigured || !allowed) {
           return new Response(JSON.stringify({ error: 'no allowlist configured; sale rejected', product_id: productId, permalink }), {
             status: 403,
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
           });
         }
 
@@ -261,7 +292,7 @@ export default {
 
         if (existing) {
           return new Response(JSON.stringify({ received: true, duplicate: true, id: existing.id }), {
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
           });
         }
 
@@ -297,7 +328,7 @@ export default {
         });
 
         return new Response(JSON.stringify({ received: true, duplicate: false, ...result }), {
-          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
         });
       }
 
@@ -309,7 +340,7 @@ export default {
         try {
           const verification = await ledger.verifyHashChain();
           return new Response(JSON.stringify(verification), {
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
           });
         } finally {
           span.end();
@@ -324,7 +355,7 @@ export default {
         try {
           const result = await ledger.reconcile();
           return new Response(JSON.stringify(result), {
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
           });
         } finally {
           span.end();
@@ -344,7 +375,7 @@ export default {
         try {
           const events = await audit.getEvents(eventType, actorDid, since, limit);
           return new Response(JSON.stringify({ events }), {
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
           });
         } finally {
           span.end();
@@ -359,7 +390,7 @@ export default {
         try {
           const result = await audit.verifyIntegrity();
           return new Response(JSON.stringify(result), {
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
           });
         } finally {
           span.end();
@@ -370,7 +401,7 @@ export default {
     } catch (error: any) {
       return new Response(JSON.stringify({ error: error.message }), {
         status: 500,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(request, env) },
       });
     }
   },

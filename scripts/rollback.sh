@@ -18,11 +18,12 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 BOLD='\033[1m'
 
-GATEWAY_DIR="/home/p31/P31-local-workspace/workers/mcp-x402-gateway"
-REVENUE_DIR="/home/p31/p31-capital-machine/workers/revenue-ledger"
-ENTITLEMENT_DIR="/home/p31/p31-capital-machine/workers/entitlement"
-ALLOCATOR_DIR="/home/p31/p31-capital-machine/workers/capital-allocator"
-ALERTING_DIR="/home/p31/p31-capital-machine/workers/alerting"
+P31_CM_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+GATEWAY_DIR="/home/p31/production/workers/mcp-x402-gateway"
+REVENUE_DIR="$P31_CM_ROOT/workers/revenue-ledger"
+ENTITLEMENT_DIR="$P31_CM_ROOT/workers/entitlement"
+ALLOCATOR_DIR="$P31_CM_ROOT/workers/capital-allocator"
+ALERTING_DIR="$P31_CM_ROOT/workers/alerting"
 
 TESTNET_NETWORK="base-sepolia"
 TESTNET_PAY_TO="0x51c285Df171C76bE36252e32679F098d90768413"

@@ -4,8 +4,8 @@ set -e
 echo "=== Creating D1 Databases ==="
 
 # Revenue Ledger DB
-echo "Creating revenue-ledger-db..."
-wrangler d1 create revenue-ledger-db --config infra/wrangler.revenue-ledger.toml 2>/dev/null || echo "revenue-ledger-db may already exist"
+echo "Creating revenue-db..."
+wrangler d1 create revenue-db --config workers/revenue-ledger/wrangler.toml 2>/dev/null || echo "revenue-db may already exist"
 
 # Entitlement DB
 echo "Creating entitlement-db..."
@@ -19,7 +19,7 @@ echo "=== Applying Migrations ==="
 
 # Apply revenue ledger migration
 echo "Applying revenue ledger migration..."
-wrangler d1 execute REVENUE_DB --remote --config infra/wrangler.revenue-ledger.toml --file infra/migrations/002_revenue_ledger.sql 2>/dev/null || echo "Migration may already be applied"
+wrangler d1 execute REVENUE_DB --remote --config workers/revenue-ledger/wrangler.toml --file infra/migrations/002_revenue_ledger.sql 2>/dev/null || echo "Migration may already be applied"
 
 # Apply entitlement migration
 echo "Applying entitlement migration..."

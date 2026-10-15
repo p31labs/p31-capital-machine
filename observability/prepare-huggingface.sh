@@ -4,11 +4,13 @@ set -e
 echo "=== Preparing HuggingFace MCP Dataset Upload ==="
 echo ""
 
-DATASET_DIR="/home/p31/p31-capital-machine/observability/huggingface-dataset"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+DATASET_DIR="$ROOT/observability/huggingface-dataset"
 mkdir -p "$DATASET_DIR"
 
 # Copy server metadata
-for file in /home/p31/p31-capital-machine/observability/glama-submissions/*.json; do
+for file in "$ROOT"/observability/glama-submissions/*.json; do
   server_name=$(basename "$file" .json)
   cp "$file" "$DATASET_DIR/$server_name.json"
   echo "  Prepared: $server_name.json"
@@ -36,4 +38,4 @@ echo "=== Dataset prepared at: $DATASET_DIR ==="
 echo ""
 echo "To upload to HuggingFace:"
 echo "  export HF_TOKEN=<your-huggingface-token>"
-echo "  bash /home/p31/p31-capital-machine/observability/huggingface-upload.sh $HF_TOKEN"
+echo "  bash $ROOT/observability/huggingface-upload.sh $HF_TOKEN"

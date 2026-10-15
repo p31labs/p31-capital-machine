@@ -1,0 +1,26 @@
+name = "capital-machine"
+main = "index.ts"
+compatibility_date = "2026-09-02"
+compatibility_flags = ["nodejs_compat"]
+
+[placement]
+mode = "smart"
+
+[[d1_databases]]
+binding = "CAPITAL_DB"
+database_name = "capital-db"
+database_id = "fd439548-52c8-4798-8c17-10567a9d1a01"
+
+[[kv_namespaces]]
+binding = "CAPITAL_KV"
+id = "d81cd27a8b5f4d58905a49081c436ad9"
+
+[observability]
+enabled = true
+head_sampling_rate = 0.1
+
+[env.production]
+vars = { ENVIRONMENT = "production" }
+
+[env.staging]
+vars = { ENVIRONMENT = "staging" }

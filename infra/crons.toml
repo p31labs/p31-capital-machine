@@ -1,7 +1,0 @@
-# Monetization Engine Cron Triggers
-
-# Entitlement Service — Monthly Reset
-# Runs on the 1st of every month at 00:00 UTC
-# Resets monthly_used_usdc to 0 for all users
-[triggers]
-crons = ["0 0 1 * *"]

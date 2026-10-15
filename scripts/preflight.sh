@@ -69,11 +69,12 @@ fi
 
 echo -e "\n${CYAN}[3/8] Worker directories${NC}"
 
-GATEWAY_DIR="/home/p31/P31-local-workspace/workers/mcp-x402-gateway"
-REVENUE_DIR="/home/p31/p31-capital-machine/workers/revenue-ledger"
-ENTITLEMENT_DIR="/home/p31/p31-capital-machine/workers/entitlement"
-ALLOCATOR_DIR="/home/p31/p31-capital-machine/workers/capital-allocator"
-ALERTING_DIR="/home/p31/p31-capital-machine/workers/alerting"
+P31_CM_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+GATEWAY_DIR="/home/p31/production/workers/mcp-x402-gateway"
+REVENUE_DIR="$P31_CM_ROOT/workers/revenue-ledger"
+ENTITLEMENT_DIR="$P31_CM_ROOT/workers/entitlement"
+ALLOCATOR_DIR="$P31_CM_ROOT/workers/capital-allocator"
+ALERTING_DIR="$P31_CM_ROOT/workers/alerting"
 
 for dir in "$GATEWAY_DIR" "$REVENUE_DIR" "$ENTITLEMENT_DIR" "$ALLOCATOR_DIR" "$ALERTING_DIR"; do
   if [[ -d "$dir" ]]; then

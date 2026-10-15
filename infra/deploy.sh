@@ -3,9 +3,15 @@ set -euo pipefail
 
 # ─── P31 Capital Machine - One-Shot Deployment ───────────────────
 # Usage: ./infra/deploy.sh [module] [env]
-#   module: all | orchestrator | dashboard | yield-vault | mev | fundraising | compounder
-#           | cashback | ip-licensing | micro-savings | affiliate | airdrop | data
+#   module: all | capital-machine | yield-vault | mev | compounder | btcpay | alerting
 #   env:    production | staging (default: production)
+#
+# Every module deploys from its own wrangler.toml so D1/KV bindings, crons,
+# observability, and vars survive the deploy. Stub/scaffold workers
+# (cashback-collector, airdrop-harvester, fundraising-agent, ip-licensing,
+# micro-savings, affiliate-fleet, data-monetization) are intentionally NOT
+# deployable here until they are real (docs/fix-plans/
+# capital-machine-stub-workers-in-deploy-path).
 
 MODULE="${1:-all}"
 ENV="${2:-production}"
@@ -40,61 +46,42 @@ setup_infra() {
   fi
 }
 
-# ─── Deploy a single module Worker ──────────────────────────────
+# ─── Deploy a single module Worker using its own wrangler.toml ──
 deploy_module() {
-  local name="$1"
-  local source="$2"
+  local config="$1"
   local env_flag=""
 
   if [ "$ENV" != "production" ]; then
     env_flag="--env $ENV"
   fi
 
-  echo "📦 Deploying [$name]..."
-  npx wrangler deploy "$source" \
-    --name "$name" \
-    --compatibility-date 2026-01-01 \
-    --compatibility-flags nodejs_compat \
-    $env_flag
+  echo "📦 Deploying [$(basename "$config")]..."
+  npx wrangler deploy --config "$config" $env_flag
 }
 
 # ─── Modules map ─────────────────────────────────────────────────
 case "$MODULE" in
   all)
     setup_infra
-    deploy_module "capital-machine" "${ROOT}/workers/capital-machine/index.ts"
-    deploy_module "dashboard" "${ROOT}/workers/dashboard/index.ts"
-    deploy_module "yield-vault" "${ROOT}/workers/yield-vault/index.ts"
-    deploy_module "mev-arbitrage" "${ROOT}/workers/mev-arbitrage/index.ts"
-    deploy_module "fundraising-agent" "${ROOT}/workers/fundraising-agent/index.ts"
-    deploy_module "auto-compounder" "${ROOT}/workers/auto-compounder/index.ts"
-    deploy_module "cashback-collector" "${ROOT}/workers/cashback-collector/index.ts"
-    deploy_module "ip-licensing" "${ROOT}/workers/ip-licensing/index.ts"
-    deploy_module "micro-savings" "${ROOT}/workers/micro-savings/index.ts"
-    deploy_module "affiliate-fleet" "${ROOT}/workers/affiliate-fleet/index.ts"
-    deploy_module "airdrop-harvester" "${ROOT}/workers/airdrop-harvester/index.ts"
-    deploy_module "data-monetization" "${ROOT}/workers/data-monetization/index.ts"
-    echo "✅ All modules deployed!"
+    deploy_module "${ROOT}/workers/capital-machine/wrangler.toml"
+    deploy_module "${ROOT}/workers/yield-vault/wrangler.toml"
+    deploy_module "${ROOT}/workers/mev-arbitrage/wrangler.toml"
+    deploy_module "${ROOT}/workers/auto-compounder/wrangler.toml"
+    deploy_module "${ROOT}/workers/btcpay-gateway/wrangler.toml"
+    deploy_module "${ROOT}/workers/alerting/wrangler.toml"
+    echo "✅ All live modules deployed!"
     ;;
 
-  orchestrator)
-    setup_infra
-    deploy_module "capital-machine" "${ROOT}/workers/capital-machine/index.ts"
-    ;;
-
-  dashboard)
-    setup_infra
-    deploy_module "dashboard" "${ROOT}/workers/dashboard/index.ts"
-    ;;
-
-  yield-vault|mev|fundraising|compounder|cashback|ip-licensing|micro-savings|affiliate|airdrop|data)
-    setup_infra
-    deploy_module "$MODULE" "${ROOT}/workers/${MODULE}/index.ts"
-    ;;
+  capital-machine) deploy_module "${ROOT}/workers/capital-machine/wrangler.toml" ;;
+  yield-vault)     deploy_module "${ROOT}/workers/yield-vault/wrangler.toml" ;;
+  mev)             deploy_module "${ROOT}/workers/mev-arbitrage/wrangler.toml" ;;
+  compounder)      deploy_module "${ROOT}/workers/auto-compounder/wrangler.toml" ;;
+  btcpay)          deploy_module "${ROOT}/workers/btcpay-gateway/wrangler.toml" ;;
+  alerting)        deploy_module "${ROOT}/workers/alerting/wrangler.toml" ;;
 
   *)
     echo "❌ Unknown module: $MODULE"
-    echo "Usage: $0 [all|orchestrator|dashboard|yield-vault|mev|fundraising|compounder|cashback|ip-licensing|micro-savings|affiliate|airdrop|data] [production|staging]"
+    echo "Usage: $0 [all|capital-machine|yield-vault|mev|compounder|btcpay|alerting] [production|staging]"
     exit 1
     ;;
 esac
@@ -104,40 +91,22 @@ echo ""
 echo "📊 Deployment Summary [$ENV]"
 echo "─────────────────────────────────"
 case "$MODULE" in
-  all|orchestrator)  echo "  Orchestrator:  https://capital-machine.trimtab-signal.workers.dev" ;;
+  all|capital-machine) echo "  Capital Machine: https://capital-machine.trimtab-signal.workers.dev" ;;
 esac
 case "$MODULE" in
-  all|dashboard)    echo "  Dashboard:     https://dashboard.trimtab-signal.workers.dev" ;;
+  all|yield-vault)     echo "  Yield Vault:     https://yield-vault.trimtab-signal.workers.dev" ;;
 esac
 case "$MODULE" in
-  all|yield-vault)   echo "  Yield Vault:   https://yield-vault.trimtab-signal.workers.dev" ;;
+  all|mev)             echo "  MEV Engine:      https://mev-arbitrage.trimtab-signal.workers.dev" ;;
 esac
 case "$MODULE" in
-  all|mev)           echo "  MEV Engine:    https://mev-arbitrage.trimtab-signal.workers.dev" ;;
+  all|compounder)      echo "  Compounder:      https://p31-auto-compounder.trimtab-signal.workers.dev" ;;
 esac
 case "$MODULE" in
-  all|fundraising)   echo "  Fundraising:   https://fundraising-agent.trimtab-signal.workers.dev" ;;
+  all|btcpay)          echo "  BTCPay Gateway:  https://btcpay-gateway.trimtab-signal.workers.dev" ;;
 esac
 case "$MODULE" in
-  all|compounder)    echo "  Compounder:    https://auto-compounder.trimtab-signal.workers.dev" ;;
-esac
-case "$MODULE" in
-  all|cashback)      echo "  Cashback:      https://cashback-collector.trimtab-signal.workers.dev" ;;
-esac
-case "$MODULE" in
-  all|ip-licensing)  echo "  IP Licensing:  https://ip-licensing.trimtab-signal.workers.dev" ;;
-esac
-case "$MODULE" in
-  all|micro-savings) echo "  Micro-Savings: https://micro-savings.trimtab-signal.workers.dev" ;;
-esac
-case "$MODULE" in
-  all|affiliate)     echo "  Affiliate:     https://affiliate-fleet.trimtab-signal.workers.dev" ;;
-esac
-case "$MODULE" in
-  all|airdrop)       echo "  Airdrop:       https://airdrop-harvester.trimtab-signal.workers.dev" ;;
-esac
-case "$MODULE" in
-  all|data)          echo "  Data API:      https://data-monetization.trimtab-signal.workers.dev" ;;
+  all|alerting)        echo "  Alerting:        https://monetization-alerting.trimtab-signal.workers.dev" ;;
 esac
 echo "─────────────────────────────────"
 echo "✨ Done!"

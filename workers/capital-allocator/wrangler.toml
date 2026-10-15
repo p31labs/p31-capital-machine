@@ -18,6 +18,7 @@ head_sampling_rate = 0.1
 [vars]
 REVENUE_LEDGER_URL = "https://revenue-ledger.trimtab-signal.workers.dev"
 ENVIRONMENT = "production"
+ALLOWED_ORIGINS = "https://p31-monetization.trimtab-signal.workers.dev,https://monetization.p31ca.org,https://p31ca.org,https://www.p31ca.org,http://localhost:5173,http://localhost:4173,capacitor://localhost"
 HONEYCOMB_API_KEY = ""  # set via wrangler secret put HONEYCOMB_API_KEY
 HONEYCOMB_DATASET = "p31-capital-allocator"
 
